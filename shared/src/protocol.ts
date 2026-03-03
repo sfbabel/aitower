@@ -132,6 +132,12 @@ export interface TokensUpdateEvent {
   tokens: number;
 }
 
+export interface ContextUpdateEvent {
+  type: "context_update";
+  convId: string;
+  contextTokens: number;
+}
+
 export interface MessageCompleteEvent {
   type: "message_complete";
   convId: string;
@@ -163,6 +169,7 @@ export type Event =
   | ToolCallEvent
   | ToolResultEvent
   | TokensUpdateEvent
+  | ContextUpdateEvent
   | MessageCompleteEvent
   | UsageUpdateEvent
   | ErrorEvent;

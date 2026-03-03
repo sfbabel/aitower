@@ -131,6 +131,11 @@ function handleEvent(event: Event): void {
       break;
     }
 
+    case "context_update": {
+      state.contextTokens = event.contextTokens;
+      break;
+    }
+
     case "message_complete": {
       if (state.pendingAI) {
         state.pendingAI.metadata.endedAt = event.endedAt;

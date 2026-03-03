@@ -28,6 +28,8 @@ export interface AgentCallbacks {
   onToolResult(block: ToolResultBlock): void;
   /** Accumulated output token count updated (fires after each API round). */
   onTokensUpdate(tokens: number): void;
+  /** Input (context) token count from the latest API round. */
+  onContextUpdate(contextTokens: number): void;
   /** Response headers received (fires once per API round, carries rate-limit info). */
   onHeaders(headers: Headers): void;
 }
@@ -112,6 +114,10 @@ export async function runAgentLoop(
     if (result.outputTokens) {
       totalOutputTokens += result.outputTokens;
       callbacks.onTokensUpdate(totalOutputTokens);
+    }
+
+    if (result.inputTokens) {
+      callbacks.onContextUpdate(result.inputTokens);
     }
 
     // ── Collect content blocks (thinking + text) ──────────────────

@@ -1,63 +1,118 @@
 /**
- * Status line renderer.
+ * Status line layout engine.
  *
- * Renders the usage bars below the input prompt.
- * This is the only file that knows how to display usage data.
- * Always renders both windows — shows ?% and resets in ? when data is unavailable.
+ * Composes status blocks side-by-side below the input prompt.
+ * Blocks are built by individual builders in statusblocks/.
+ * When the terminal is too narrow, lower-priority blocks are dropped.
+ *
+ * This file owns the layout algorithm. Individual blocks own their
+ * content and rendering.
  */
 
-import type { UsageData, UsageWindow } from "./messages";
+import type { RenderState } from "./state";
 import { theme } from "./theme";
 
-// ── Formatting ──────────────────────────────────────────────────────
+// ── Block registry ──────────────────────────────────────────────────
 
-const BAR_WIDTH = 20;
+import { usageBlock } from "./statusblocks/usage";
+import { contextBlock } from "./statusblocks/context";
 
-function renderBar(pct: number | null): string {
-  if (pct === null) {
-    return theme.muted + "\u2591".repeat(BAR_WIDTH);
+export interface StatusBlock {
+  id: string;
+  priority: number;     // higher = survives longer when narrow
+  width: number;        // visible columns needed (excluding delimiter)
+  height: number;       // rows this block occupies
+  rows: string[];       // pre-rendered ANSI row strings
+}
+
+type BlockBuilder = (state: RenderState) => StatusBlock | null;
+
+/** Ordered list of block builders. Position determines display order. */
+const BLOCK_BUILDERS: BlockBuilder[] = [
+  usageBlock,
+  contextBlock,
+];
+
+const DELIMITER_WIDTH = 3; // " │ "
+
+// ── Layout algorithm ────────────────────────────────────────────────
+
+/**
+ * Build all blocks, then greedily fit by priority.
+ * Returns surviving blocks in their original positional order.
+ */
+function layoutBlocks(state: RenderState, cols: number): StatusBlock[] {
+  // Build candidates, preserving positional index
+  const candidates: { block: StatusBlock; position: number }[] = [];
+  for (let i = 0; i < BLOCK_BUILDERS.length; i++) {
+    const block = BLOCK_BUILDERS[i](state);
+    if (block) candidates.push({ block, position: i });
   }
-  const clamped = Math.max(0, Math.min(100, pct));
-  const filled = Math.round((clamped / 100) * BAR_WIDTH);
-  const empty = BAR_WIDTH - filled;
-  return theme.accent + "\u2588".repeat(filled) + theme.muted + "\u2591".repeat(empty);
+
+  // Sort by priority descending for the survival decision
+  const byPriority = [...candidates].sort((a, b) => b.block.priority - a.block.priority);
+
+  // Greedily select blocks that fit
+  const selectedPositions = new Set<number>();
+  let used = 0;
+  for (const { block, position } of byPriority) {
+    const need = selectedPositions.size === 0 ? block.width : DELIMITER_WIDTH + block.width;
+    if (used + need <= cols) {
+      selectedPositions.add(position);
+      used += need;
+    }
+  }
+
+  // Return in original positional order
+  return candidates
+    .filter(c => selectedPositions.has(c.position))
+    .map(c => c.block);
 }
 
-function formatTimeUntil(resetMs: number | null, now: number): string {
-  if (resetMs === null) return "?";
-  const diff = Math.floor((resetMs - now) / 1000);
-  if (diff <= 0) return "?";
+// ── Row composition ─────────────────────────────────────────────────
 
-  const days = Math.floor(diff / 86400);
-  const hours = Math.floor((diff % 86400) / 3600);
-  const mins = Math.floor((diff % 3600) / 60);
+function composeRow(blocks: StatusBlock[], rowIdx: number, cols: number): string {
+  let out = "";
+  for (let i = 0; i < blocks.length; i++) {
+    if (i > 0) out += `${theme.accent} \u2502 `;
+    const block = blocks[i];
+    if (rowIdx < block.height) {
+      out += block.rows[rowIdx];
+    } else {
+      out += " ".repeat(block.width);
+    }
+  }
 
-  if (days > 0) return `${days}d:${hours}h:${pad2(mins)}m`;
-  return `${hours}h:${pad2(mins)}m`;
+  // Pad to full width
+  let usedCols = 0;
+  for (let i = 0; i < blocks.length; i++) {
+    usedCols += blocks[i].width;
+    if (i > 0) usedCols += DELIMITER_WIDTH;
+  }
+  const remaining = cols - usedCols;
+  if (remaining > 0) out += " ".repeat(remaining);
+  out += theme.reset;
+  return out;
 }
 
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : `${n}`;
+// ── Public API ──────────────────────────────────────────────────────
+
+/** Compute the number of rows the status line will occupy. */
+export function statusLineHeight(state: RenderState, cols: number): number {
+  const blocks = layoutBlocks(state, cols);
+  if (blocks.length === 0) return 0;
+  return Math.max(...blocks.map(b => b.height));
 }
 
-function renderWindowLine(label: string, window: UsageWindow | null, now: number): string {
-  const pct = window ? Math.round(window.utilization) : null;
-  const pctStr = pct !== null ? `${pct}%` : "?%";
-  const resetStr = formatTimeUntil(window?.resetsAt ?? null, now);
-  const bar = renderBar(pct);
-  return `${theme.muted}  ${label}: ${theme.text}[${bar}${theme.text}] ${theme.accent}${pctStr}${theme.muted} resets in ${theme.accent}${resetStr}${theme.reset}`;
+/** Render the status line into an array of ANSI strings, one per row. */
+export function renderStatusLine(state: RenderState, cols: number): string[] {
+  const blocks = layoutBlocks(state, cols);
+  if (blocks.length === 0) return [];
+
+  const maxH = Math.max(...blocks.map(b => b.height));
+  const rows: string[] = [];
+  for (let i = 0; i < maxH; i++) {
+    rows.push(composeRow(blocks, i, cols));
+  }
+  return rows;
 }
-
-// ── Public renderer ─────────────────────────────────────────────────
-
-/** Always returns 2 lines — 5-Hour and Weekly. */
-export function renderStatusLine(usage: UsageData | null): string[] {
-  const now = Date.now();
-  return [
-    renderWindowLine("5-Hour", usage?.fiveHour ?? null, now),
-    renderWindowLine("Weekly", usage?.sevenDay ?? null, now),
-  ];
-}
-
-/** Always 2 rows. */
-export const STATUS_LINE_HEIGHT = 2;

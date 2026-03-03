@@ -8,7 +8,7 @@
 import type { Block, AIMessage } from "./messages";
 import { isStreaming, type RenderState } from "./state";
 import { renderMetadata } from "./metadata";
-import { renderStatusLine, STATUS_LINE_HEIGHT } from "./statusline";
+import { renderStatusLine, statusLineHeight } from "./statusline";
 import { theme } from "./theme";
 
 // ── ANSI helpers (non-color escapes — not theme-dependent) ──────────
@@ -300,8 +300,9 @@ export function render(state: RenderState): void {
   const inputRowCount = inputLines.length;
 
   // ── Bottom layout: sep | input rows | sep | status ────────────
-  const statusLines = renderStatusLine(state.usage);
-  const bottomUsed = 1 + inputRowCount + 1 + STATUS_LINE_HEIGHT; // sep + input + sep + status
+  const slHeight = statusLineHeight(state, cols);
+  const statusLines = renderStatusLine(state, cols);
+  const bottomUsed = 1 + inputRowCount + 1 + slHeight; // sep + input + sep + status
   const sepAbove = rows - bottomUsed + 1;
   const firstInputRow = sepAbove + 1;
   const sepBelow = firstInputRow + inputRowCount;
@@ -325,7 +326,7 @@ export function render(state: RenderState): void {
   out.push(`${promptColor}${"─".repeat(cols)}${theme.reset}`);
 
   // Status lines
-  for (let i = 0; i < STATUS_LINE_HEIGHT; i++) {
+  for (let i = 0; i < slHeight; i++) {
     out.push(move_to(sepBelow + 1 + i, 1) + clear_line);
     out.push(statusLines[i]);
   }

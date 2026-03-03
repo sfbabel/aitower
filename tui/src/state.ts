@@ -22,6 +22,8 @@ export interface RenderState {
   scrollOffset: number;
   /** Rate-limit usage data from the daemon. Null until first update. */
   usage: UsageData | null;
+  /** Input tokens from the latest API round. Null until first context_update. */
+  contextTokens: number | null;
   /** Which panel has focus — determines key routing and separator colors. */
   focus: FocusTarget;
 }
@@ -43,6 +45,7 @@ export function createInitialState(): RenderState {
     rows: process.stdout.rows || 24,
     scrollOffset: 0,
     usage: null,
+    contextTokens: null,
     focus: "prompt",
   };
 }

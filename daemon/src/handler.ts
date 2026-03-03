@@ -180,6 +180,9 @@ async function handleSendMessage(
     onTokensUpdate(tokens) {
       server.sendToSubscribers(convId, { type: "tokens_update", convId, tokens });
     },
+    onContextUpdate(contextTokens) {
+      server.sendToSubscribers(convId, { type: "context_update", convId, contextTokens });
+    },
     onHeaders,
   };
 
