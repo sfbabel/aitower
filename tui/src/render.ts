@@ -8,6 +8,7 @@
 import type { Block, AIMessage } from "./messages";
 import { isStreaming, type RenderState } from "./state";
 import { renderMetadata } from "./metadata";
+import { renderStatusLine, statusLineHeight } from "./statusline";
 
 // ── ANSI helpers ────────────────────────────────────────────────────
 
@@ -192,9 +193,13 @@ export function render(state: RenderState): void {
   out.push(move_to(2, 1) + clear_line);
   out.push(`${DIM}${"─".repeat(cols)}${RESET}`);
 
-  // ── Input area (bottom 2 rows) ────────────────────────────────
-  const inputRow = rows - 1;
-  const sepRow = rows - 2;
+  // ── Status line (below input) ──────────────────────────────────
+  const statusLines = renderStatusLine(state.usage);
+  const slHeight = statusLines.length;
+
+  // ── Input area ────────────────────────────────────────────────
+  const inputRow = rows - slHeight - 1;
+  const sepRow = inputRow - 1;
 
   out.push(move_to(sepRow, 1) + clear_line);
   out.push(`${DIM}${"─".repeat(cols)}${RESET}`);
@@ -211,6 +216,12 @@ export function render(state: RenderState): void {
   }
   out.push(move_to(inputRow, 1) + clear_line);
   out.push(prompt + displayInput);
+
+  // ── Render status lines ───────────────────────────────────────
+  for (let i = 0; i < slHeight; i++) {
+    out.push(move_to(inputRow + 1 + i, 1) + clear_line);
+    out.push(statusLines[i]);
+  }
 
   // ── Message area (rows 3 to sepRow-1) ─────────────────────────
   const messageAreaStart = 3;

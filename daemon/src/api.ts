@@ -55,6 +55,7 @@ export interface StreamCallbacks {
   onText: (chunk: string) => void;
   onThinking: (chunk: string) => void;
   onBlockStart?: (type: "text" | "thinking") => void;
+  onHeaders?: (headers: Headers) => void;
 }
 
 export interface StreamOptions {
@@ -334,6 +335,7 @@ export async function streamMessage(
       throw new Error(`API error (${res.status}): ${text}`);
     }
 
+    callbacks.onHeaders?.(res.headers);
     return readStream(res, callbacks);
   }
 }

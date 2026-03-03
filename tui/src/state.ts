@@ -5,7 +5,7 @@
  * Message and block types live in messages.ts.
  */
 
-import type { ModelId } from "./messages";
+import type { ModelId, UsageData } from "./messages";
 import type { Message, AIMessage } from "./messages";
 
 export interface RenderState {
@@ -19,6 +19,8 @@ export interface RenderState {
   cols: number;
   rows: number;
   scrollOffset: number;
+  /** Rate-limit usage data from the daemon. Null until first update. */
+  usage: UsageData | null;
 }
 
 /** Streaming state is derived from pendingAI — no separate boolean. */
@@ -37,5 +39,6 @@ export function createInitialState(): RenderState {
     cols: process.stdout.columns || 80,
     rows: process.stdout.rows || 24,
     scrollOffset: 0,
+    usage: null,
   };
 }

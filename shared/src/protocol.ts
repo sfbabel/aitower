@@ -8,8 +8,8 @@
  * Commands flow client → daemon. Events flow daemon → client.
  */
 
-import type { ModelId, Block } from "./messages";
-export type { ModelId, Block };
+import type { ModelId, Block, UsageData } from "./messages";
+export type { ModelId, Block, UsageData };
 
 // ── Commands (client → daemon) ──────────────────────────────────────
 
@@ -139,6 +139,11 @@ export interface MessageCompleteEvent {
   endedAt: number;
 }
 
+export interface UsageUpdateEvent {
+  type: "usage_update";
+  usage: UsageData;
+}
+
 export interface ErrorEvent {
   type: "error";
   reqId?: string;
@@ -159,4 +164,5 @@ export type Event =
   | ToolResultEvent
   | TokensUpdateEvent
   | MessageCompleteEvent
+  | UsageUpdateEvent
   | ErrorEvent;

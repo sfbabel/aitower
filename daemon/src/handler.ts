@@ -8,21 +8,52 @@
 
 import { log } from "./log";
 import { loadAuth } from "./store";
+import { getAccessToken } from "./api";
 import { runAgentLoop, type AgentCallbacks } from "./agent";
 import { buildSystemPrompt } from "./system";
+import { fetchUsage, parseUsageHeaders } from "./usage";
 import * as convStore from "./conversations";
 import { DaemonServer, type ConnectedClient } from "./server";
 import type { Command } from "./protocol";
-import type { ModelId, Block, ApiMessage } from "./messages";
+import type { ModelId, Block, ApiMessage, UsageData } from "./messages";
 
 // ── Handler ─────────────────────────────────────────────────────────
 
 export function createHandler(server: DaemonServer) {
+  let lastUsage: UsageData | null = null;
+
+  /** Fetch usage and broadcast to all clients. */
+  function refreshUsage(): void {
+    const auth = loadAuth();
+    if (!auth?.tokens?.accessToken) return;
+    fetchUsage(auth.tokens.accessToken).then((usage) => {
+      if (usage) {
+        lastUsage = usage;
+        server.broadcast({ type: "usage_update", usage });
+      }
+    });
+  }
+
+  /** Update usage from streaming response headers and broadcast. */
+  function handleHeaders(headers: Headers): void {
+    const usage = parseUsageHeaders(headers, lastUsage);
+    if (usage) {
+      lastUsage = usage;
+      server.broadcast({ type: "usage_update", usage });
+    }
+  }
+
   return async function handleCommand(client: ConnectedClient, cmd: Command): Promise<void> {
     switch (cmd.type) {
 
       case "ping": {
         server.sendTo(client, { type: "pong", reqId: cmd.reqId });
+        // Send current usage to newly connected clients
+        if (lastUsage) {
+          server.sendTo(client, { type: "usage_update", usage: lastUsage });
+        }
+        // Refresh usage in the background
+        refreshUsage();
         break;
       }
 
@@ -63,7 +94,7 @@ export function createHandler(server: DaemonServer) {
       }
 
       case "send_message": {
-        await handleSendMessage(server, client, cmd.reqId, cmd.convId, cmd.text, cmd.startedAt);
+        await handleSendMessage(server, client, cmd.reqId, cmd.convId, cmd.text, cmd.startedAt, handleHeaders, refreshUsage);
         break;
       }
 
@@ -87,6 +118,8 @@ async function handleSendMessage(
   convId: string,
   text: string,
   startedAt: number,
+  onHeaders: (headers: Headers) => void,
+  onComplete: () => void,
 ): Promise<void> {
   const auth = loadAuth();
   if (!auth?.tokens?.accessToken) {
@@ -147,6 +180,7 @@ async function handleSendMessage(
     onTokensUpdate(tokens) {
       server.sendToSubscribers(convId, { type: "tokens_update", convId, tokens });
     },
+    onHeaders,
   };
 
   try {
@@ -183,5 +217,6 @@ async function handleSendMessage(
   } finally {
     convStore.clearActiveJob(convId);
     server.broadcast({ type: "streaming_stopped", convId });
+    onComplete();
   }
 }

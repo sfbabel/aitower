@@ -167,6 +167,11 @@ function handleEvent(event: Event): void {
       break;
     }
 
+    case "usage_update": {
+      state.usage = event.usage;
+      break;
+    }
+
     case "ack":
     case "pong":
       break;

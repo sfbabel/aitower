@@ -86,3 +86,17 @@ export interface SystemMessage {
 }
 
 export type Message = UserMessage | AIMessage | SystemMessage;
+
+// ── Usage data ──────────────────────────────────────────────────────
+
+export interface UsageWindow {
+  /** Utilization percentage, 0–100. */
+  utilization: number;
+  /** Unix timestamp (ms) when this window resets. Null if unknown. */
+  resetsAt: number | null;
+}
+
+export interface UsageData {
+  fiveHour: UsageWindow | null;
+  sevenDay: UsageWindow | null;
+}
