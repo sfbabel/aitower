@@ -26,6 +26,8 @@ export interface AgentCallbacks {
   onToolCall(block: ToolCallBlock): void;
   /** A tool has finished executing. */
   onToolResult(block: ToolResultBlock): void;
+  /** Accumulated output token count updated (fires after each API round). */
+  onTokensUpdate(tokens: number): void;
 }
 
 // ── Tool execution ──────────────────────────────────────────────────
@@ -104,7 +106,10 @@ export async function runAgentLoop(
       tools: options.tools,
     });
 
-    if (result.outputTokens) totalOutputTokens += result.outputTokens;
+    if (result.outputTokens) {
+      totalOutputTokens += result.outputTokens;
+      callbacks.onTokensUpdate(totalOutputTokens);
+    }
 
     // ── Collect content blocks (thinking + text) ──────────────────
     for (const block of result.blocks) {

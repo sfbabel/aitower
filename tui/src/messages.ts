@@ -11,14 +11,14 @@ export * from "@exocortex/shared/messages";
 
 // ── TUI helpers ─────────────────────────────────────────────────────
 
-import type { AIMessage, Block } from "@exocortex/shared/messages";
+import type { AIMessage, Block, ModelId } from "@exocortex/shared/messages";
 
 /** Create a fresh pending AI message for streaming. */
-export function createPendingAI(startedAt: number): AIMessage {
+export function createPendingAI(startedAt: number, model: ModelId): AIMessage {
   return {
     role: "assistant",
     blocks: [],
-    metadata: { startedAt, endedAt: null },
+    metadata: { startedAt, endedAt: null, model, tokens: 0 },
   };
 }
 

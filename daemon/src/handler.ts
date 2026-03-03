@@ -144,6 +144,9 @@ async function handleSendMessage(
         isError: block.isError,
       });
     },
+    onTokensUpdate(tokens) {
+      server.sendToSubscribers(convId, { type: "tokens_update", convId, tokens });
+    },
   };
 
   try {
@@ -164,8 +167,6 @@ async function handleSendMessage(
       type: "message_complete",
       convId,
       blocks: result.blocks,
-      model: result.model,
-      tokens: result.tokens,
       endedAt,
     });
 

@@ -27,6 +27,8 @@ function formatDuration(ms: number): string {
 /**
  * Render message metadata into display lines.
  *
+ * Format: model · N tokens · Xs
+ *
  * @param metadata  The metadata to render (null = no output).
  * @param streaming Whether this message is currently being streamed.
  * @returns Lines to append below the message content.
@@ -39,15 +41,17 @@ export function renderMetadata(
 
   const parts: string[] = [];
 
+  // Model
+  parts.push(metadata.model);
+
+  // Tokens
+  parts.push(`${metadata.tokens} tokens`);
+
   // Duration
   const elapsed = (metadata.endedAt ?? Date.now()) - metadata.startedAt;
   parts.push(formatDuration(elapsed));
 
-  // Streaming cursor
-  if (streaming) {
-    parts.push("▍");
-  }
-
-  if (parts.length === 0) return [];
-  return [`  ${DIM}${parts.join(" ")}${RESET}`];
+  const line = parts.join(" · ");
+  const cursor = streaming ? " ▍" : "";
+  return [`  ${DIM}${line}${cursor}${RESET}`];
 }

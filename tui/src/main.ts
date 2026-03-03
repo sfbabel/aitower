@@ -119,10 +119,15 @@ function handleEvent(event: Event): void {
       break;
     }
 
+    case "tokens_update": {
+      if (state.pendingAI) {
+        state.pendingAI.metadata.tokens = event.tokens;
+      }
+      break;
+    }
+
     case "message_complete": {
       if (state.pendingAI) {
-        state.pendingAI.metadata.model = event.model;
-        state.pendingAI.metadata.tokens = event.tokens;
         state.pendingAI.metadata.endedAt = event.endedAt;
         state.messages.push(state.pendingAI);
         state.pendingAI = null;
@@ -204,7 +209,7 @@ function handleSubmit(): void {
   // Create the AI message immediately so the timer starts now
   const startedAt = Date.now();
   state.messages.push({ role: "user", text, metadata: null });
-  state.pendingAI = createPendingAI(startedAt);
+  state.pendingAI = createPendingAI(startedAt, state.model);
 
   // If no conversation yet, create one first
   if (!state.convId) {

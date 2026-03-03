@@ -126,12 +126,16 @@ export interface ToolResultEvent {
   isError: boolean;
 }
 
+export interface TokensUpdateEvent {
+  type: "tokens_update";
+  convId: string;
+  tokens: number;
+}
+
 export interface MessageCompleteEvent {
   type: "message_complete";
   convId: string;
   blocks: Block[];
-  model: ModelId;
-  tokens?: number;
   endedAt: number;
 }
 
@@ -153,5 +157,6 @@ export type Event =
   | ThinkingChunkEvent
   | ToolCallEvent
   | ToolResultEvent
+  | TokensUpdateEvent
   | MessageCompleteEvent
   | ErrorEvent;

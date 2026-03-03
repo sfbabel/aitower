@@ -47,16 +47,17 @@ export type Block = ThinkingBlock | TextBlock | ToolCallBlock | ToolResultBlock;
 
 /**
  * Metadata attached to a message. Persisted by the daemon,
- * rendered by the client. All fields are optional — presence
- * determines which metadata blocks are displayed.
+ * rendered by the client.
  */
 export interface MessageMetadata {
   /** When the client sent this message. Client-originated. */
   startedAt: number;
   /** When the daemon finished. Null while streaming. */
   endedAt: number | null;
-  model?: ModelId;
-  tokens?: number;
+  /** Model used. Client-originated (set on creation). */
+  model: ModelId;
+  /** Accumulated output tokens. Starts at 0, daemon sends periodic updates. */
+  tokens: number;
 }
 
 // ── Messages ────────────────────────────────────────────────────────
