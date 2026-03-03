@@ -1,11 +1,12 @@
 /**
  * Terminal rendering for the Exocortex TUI.
  *
- * Draws the UI: header, messages, streaming indicator, and input prompt.
+ * Draws the UI: header, messages (with blocks), and input prompt.
  * Uses ANSI escape codes for cursor positioning and colors.
  */
 
-import type { ModelId } from "./protocol";
+import type { Block } from "./protocol";
+import type { RenderState, Message, AIMessage } from "./state";
 
 // ── ANSI helpers ────────────────────────────────────────────────────
 
@@ -29,28 +30,6 @@ export const leave_alt = `${ESC}?1049l`;
 export const clear_screen = `${ESC}2J${ESC}H`;
 const clear_line = `${ESC}2K`;
 const move_to = (row: number, col: number) => `${ESC}${row};${col}H`;
-
-// ── Types ───────────────────────────────────────────────────────────
-
-export interface DisplayMessage {
-  role: "user" | "assistant" | "system";
-  text: string;
-  durationMs?: number;
-}
-
-export interface RenderState {
-  messages: DisplayMessage[];
-  streamingText: string;
-  streaming: boolean;
-  streamStartedAt: number | null;
-  model: ModelId;
-  convId: string | null;
-  inputBuffer: string;
-  cursorPos: number;
-  cols: number;
-  rows: number;
-  scrollOffset: number;
-}
 
 // ── Word wrapping ───────────────────────────────────────────────────
 
@@ -76,7 +55,7 @@ function wordWrap(text: string, width: number): string[] {
   return result;
 }
 
-// ── Build display lines ─────────────────────────────────────────────
+// ── Duration formatting ─────────────────────────────────────────────
 
 function formatDuration(ms: number): string {
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
@@ -85,12 +64,97 @@ function formatDuration(ms: number): string {
   return `${m}m ${s}s`;
 }
 
+// ── Block rendering ─────────────────────────────────────────────────
+
+function renderBlock(block: Block, contentWidth: number): string[] {
+  const lines: string[] = [];
+
+  switch (block.type) {
+    case "thinking": {
+      for (const wl of wordWrap(block.text, contentWidth)) {
+        lines.push(`  ${DIM}${ITALIC}${wl}${RESET}`);
+      }
+      break;
+    }
+    case "text": {
+      for (const wl of wordWrap(block.text, contentWidth)) {
+        lines.push(`  ${wl}`);
+      }
+      break;
+    }
+    case "tool_call": {
+      const label = `${MAGENTA}  ▸ ${block.toolName}${RESET}`;
+      const summary = block.summary ? `${DIM} ${block.summary}${RESET}` : "";
+      lines.push(`${label}${summary}`);
+      break;
+    }
+    case "tool_result": {
+      const maxLines = 6;
+      const prefix = block.isError ? `${RED}  ✗` : `${DIM}  ↳`;
+      const outputLines = block.output.split("\n");
+      const truncated = outputLines.length > maxLines;
+      const visible = outputLines.slice(0, maxLines);
+
+      for (const ol of visible) {
+        for (const wl of wordWrap(ol, contentWidth - 2)) {
+          lines.push(`${prefix} ${wl}${RESET}`);
+        }
+      }
+      if (truncated) {
+        lines.push(`${prefix} … (${outputLines.length - maxLines} more lines)${RESET}`);
+      }
+      break;
+    }
+  }
+
+  return lines;
+}
+
+// ── AI message rendering ────────────────────────────────────────────
+
+function renderAIMessage(
+  msg: AIMessage,
+  contentWidth: number,
+  isStreaming: boolean,
+  elapsed: number,
+): string[] {
+  const lines: string[] = [];
+
+  // Header
+  const dur = msg.durationMs
+    ? `${DIM} · ${formatDuration(msg.durationMs)}${RESET}`
+    : isStreaming && elapsed > 0
+      ? `${DIM} · ${formatDuration(elapsed)}${RESET}`
+      : "";
+  lines.push(`${BOLD}${GREEN}  ▌Claude${RESET}${dur}`);
+
+  // Empty pending message → "thinking..."
+  if (msg.blocks.length === 0 && isStreaming) {
+    lines.push(`  ${DIM}thinking...${RESET}`);
+    return lines;
+  }
+
+  // Render each block
+  for (const block of msg.blocks) {
+    lines.push(...renderBlock(block, contentWidth));
+  }
+
+  // Streaming cursor
+  if (isStreaming) {
+    lines.push(`  ${DIM}▍${RESET}`);
+  }
+
+  return lines;
+}
+
+// ── Build all display lines ─────────────────────────────────────────
+
 function buildMessageLines(state: RenderState): string[] {
-  const contentWidth = state.cols - 4; // 2 char indent + 2 char margin
+  const contentWidth = state.cols - 4;
   const lines: string[] = [];
 
   for (const msg of state.messages) {
-    lines.push(""); // blank line before each message
+    lines.push("");
 
     if (msg.role === "user") {
       lines.push(`${BOLD}${CYAN}  ▌You${RESET}`);
@@ -98,34 +162,17 @@ function buildMessageLines(state: RenderState): string[] {
         lines.push(`  ${wl}`);
       }
     } else if (msg.role === "assistant") {
-      const dur = msg.durationMs ? `${DIM} · ${formatDuration(msg.durationMs)}${RESET}` : "";
-      lines.push(`${BOLD}${GREEN}  ▌Claude${RESET}${dur}`);
-      for (const wl of wordWrap(msg.text, contentWidth)) {
-        lines.push(`  ${wl}`);
-      }
+      lines.push(...renderAIMessage(msg, contentWidth, false, 0));
     } else {
       lines.push(`  ${DIM}${msg.text}${RESET}`);
     }
   }
 
-  // Streaming in progress
-  if (state.streaming) {
+  // Currently streaming AI message
+  if (state.pendingAI) {
+    lines.push("");
     const elapsed = state.streamStartedAt ? Date.now() - state.streamStartedAt : 0;
-    const dur = elapsed > 0 ? `${DIM} · ${formatDuration(elapsed)}${RESET}` : "";
-
-    if (!state.streamingText) {
-      // Waiting for first chunk
-      lines.push("");
-      lines.push(`${BOLD}${GREEN}  ▌Claude${RESET}${dur}`);
-      lines.push(`  ${DIM}thinking...${RESET}`);
-    } else {
-      lines.push("");
-      lines.push(`${BOLD}${GREEN}  ▌Claude${RESET}${dur}`);
-      for (const wl of wordWrap(state.streamingText, contentWidth)) {
-        lines.push(`  ${wl}`);
-      }
-      lines.push(`  ${DIM}▍${RESET}`);
-    }
+    lines.push(...renderAIMessage(state.pendingAI, contentWidth, true, elapsed));
   }
 
   return lines;
@@ -154,15 +201,12 @@ export function render(state: RenderState): void {
   const inputRow = rows - 1;
   const sepRow = rows - 2;
 
-  // Separator above input
   out.push(move_to(sepRow, 1) + clear_line);
   out.push(`${DIM}${"─".repeat(cols)}${RESET}`);
 
-  // Input line
   const prompt = `${BOLD}${BLUE} ❯${RESET} `;
-  const promptLen = 3; // " ❯ " visible chars
+  const promptLen = 3;
   const inputWidth = cols - promptLen;
-  // Show the portion of input around the cursor
   let displayInput = state.inputBuffer;
   let displayCursorPos = state.cursorPos;
   if (displayInput.length > inputWidth) {
@@ -177,13 +221,10 @@ export function render(state: RenderState): void {
   const messageAreaStart = 3;
   const messageAreaHeight = sepRow - messageAreaStart;
   const allLines = buildMessageLines(state);
-
-  // Apply scroll: show the last `messageAreaHeight` lines by default
   const totalLines = allLines.length;
-  let viewStart: number;
 
+  let viewStart: number;
   if (state.scrollOffset === 0) {
-    // Auto-scroll: show bottom
     viewStart = Math.max(0, totalLines - messageAreaHeight);
   } else {
     viewStart = Math.max(0, totalLines - messageAreaHeight - state.scrollOffset);

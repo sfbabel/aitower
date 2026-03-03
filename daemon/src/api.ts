@@ -8,9 +8,8 @@
 import { loadAuth, isTokenExpired, saveAuth } from "./store";
 import { refreshTokens, AuthError } from "./auth";
 import { log } from "./log";
-import type { ModelId, MODEL_MAP } from "./protocol";
+import type { ModelId } from "./protocol";
 
-// Re-export for handler use
 export { AuthError };
 
 // ── Config ──────────────────────────────────────────────────────────
@@ -40,12 +39,39 @@ export type ApiContentBlock =
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
   | { type: "tool_result"; tool_use_id: string; content: string; is_error?: boolean };
 
+/** A tool call parsed from the API response. */
+export interface ApiToolCall {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+/** An ordered content block from a single API response (text or thinking). */
+export type ContentBlock =
+  | { type: "thinking"; text: string; signature: string }
+  | { type: "text"; text: string };
+
 export interface StreamResult {
   text: string;
   thinking: string;
   stopReason: string;
+  blocks: ContentBlock[];
+  toolCalls: ApiToolCall[];
   inputTokens?: number;
   outputTokens?: number;
+}
+
+export interface StreamCallbacks {
+  onText: (chunk: string) => void;
+  onThinking: (chunk: string) => void;
+  onBlockStart?: (type: "text" | "thinking") => void;
+}
+
+export interface StreamOptions {
+  system?: string;
+  signal?: AbortSignal;
+  maxTokens?: number;
+  tools?: unknown[];
 }
 
 export class OverloadError extends Error {
@@ -86,7 +112,7 @@ function supportsAdaptive(model: ModelId): boolean {
 
 function buildRequest(
   accessToken: string, messages: ApiMessage[], model: ModelId,
-  maxTokens: number, system?: string,
+  maxTokens: number, system?: string, tools?: unknown[],
 ) {
   const adaptive = supportsAdaptive(model);
   const thinking = adaptive
@@ -97,6 +123,7 @@ function buildRequest(
     model: MODEL_IDS[model], messages, max_tokens: maxTokens,
     thinking, stream: true,
   };
+  if (tools && tools.length > 0) body.tools = tools;
   if (system) {
     body.system = [{ type: "text", text: system, cache_control: { type: "ephemeral" } }];
   }
@@ -120,9 +147,34 @@ function buildRequest(
 
 // ── SSE stream parser ───────────────────────────────────────────────
 
-interface StreamCallbacks {
-  onText: (chunk: string) => void;
-  onThinking: (chunk: string) => void;
+/** Internal block state tracked during SSE parsing. */
+interface BlockState {
+  type: "text" | "thinking" | "tool_use";
+  text: string;
+  id: string;          // tool_use
+  name: string;        // tool_use
+  inputJson: string;   // tool_use (accumulated partial JSON)
+  signature: string;   // thinking
+}
+
+function finalizeBlock(
+  block: BlockState,
+  orderedBlocks: ContentBlock[],
+  toolCalls: ApiToolCall[],
+): void {
+  if (block.type === "thinking") {
+    if (block.text) {
+      orderedBlocks.push({ type: "thinking", text: block.text, signature: block.signature });
+    }
+  } else if (block.type === "text") {
+    if (block.text) {
+      orderedBlocks.push({ type: "text", text: block.text });
+    }
+  } else if (block.type === "tool_use") {
+    let input: Record<string, unknown> = {};
+    try { if (block.inputJson) input = JSON.parse(block.inputJson); } catch {}
+    toolCalls.push({ id: block.id, name: block.name, input });
+  }
 }
 
 async function readStream(res: Response, cb: StreamCallbacks): Promise<StreamResult> {
@@ -133,28 +185,55 @@ async function readStream(res: Response, cb: StreamCallbacks): Promise<StreamRes
   let stopReason = "";
   let inputTokens: number | undefined;
   let outputTokens: number | undefined;
-
-  // Track content block types by index
-  const blockTypes = new Map<number, "text" | "thinking" | "tool_use">();
+  const toolCalls: ApiToolCall[] = [];
+  const orderedBlocks: ContentBlock[] = [];
+  const blocks = new Map<number, BlockState>();
 
   const processEvent = (event: Record<string, unknown>) => {
     switch (event.type) {
       case "content_block_start": {
         const idx = event.index as number;
-        const cb = event.content_block as Record<string, unknown>;
-        blockTypes.set(idx, cb.type as "text" | "thinking" | "tool_use");
+        const contentBlock = event.content_block as Record<string, unknown>;
+        if (contentBlock.type === "text") {
+          blocks.set(idx, { type: "text", text: "", id: "", name: "", inputJson: "", signature: "" });
+          cb.onBlockStart?.("text");
+        } else if (contentBlock.type === "thinking") {
+          blocks.set(idx, { type: "thinking", text: "", id: "", name: "", inputJson: "", signature: "" });
+          cb.onBlockStart?.("thinking");
+        } else if (contentBlock.type === "tool_use") {
+          blocks.set(idx, {
+            type: "tool_use", text: "",
+            id: (contentBlock.id as string) ?? "",
+            name: (contentBlock.name as string) ?? "",
+            inputJson: "", signature: "",
+          });
+        }
         break;
       }
       case "content_block_delta": {
         const idx = event.index as number;
+        const block = blocks.get(idx);
+        if (!block) break;
         const delta = event.delta as Record<string, string> | undefined;
         if (delta?.type === "text_delta") {
+          block.text += delta.text;
           fullText += delta.text;
           cb.onText(delta.text);
         } else if (delta?.type === "thinking_delta") {
+          block.text += delta.thinking;
           fullThinking += delta.thinking;
           cb.onThinking(delta.thinking);
+        } else if (delta?.type === "signature_delta") {
+          block.signature = delta.signature;
+        } else if (delta?.type === "input_json_delta") {
+          block.inputJson += delta.partial_json;
         }
+        break;
+      }
+      case "content_block_stop": {
+        const idx = event.index as number;
+        const block = blocks.get(idx);
+        if (block) finalizeBlock(block, orderedBlocks, toolCalls);
         break;
       }
       case "message_start": {
@@ -183,12 +262,8 @@ async function readStream(res: Response, cb: StreamCallbacks): Promise<StreamRes
       if (!line.startsWith("data: ")) continue;
       const data = line.slice(6);
       if (data === "[DONE]") continue;
-      try {
-        processEvent(JSON.parse(data));
-      } catch (e) {
-        if (e instanceof SyntaxError) continue;
-        throw e;
-      }
+      try { processEvent(JSON.parse(data)); }
+      catch (e) { if (e instanceof SyntaxError) continue; throw e; }
     }
   };
 
@@ -215,11 +290,13 @@ async function readStream(res: Response, cb: StreamCallbacks): Promise<StreamRes
     processLines(lines);
   }
 
-  // Flush remaining
   buffer += decoder.decode();
   if (buffer.trim()) processLines(buffer.split("\n"));
 
-  return { text: fullText, thinking: fullThinking, stopReason, inputTokens, outputTokens };
+  // Infer stop reason from tool calls if missing
+  if (!stopReason && toolCalls.length > 0) stopReason = "tool_use";
+
+  return { text: fullText, thinking: fullThinking, stopReason, blocks: orderedBlocks, toolCalls, inputTokens, outputTokens };
 }
 
 // ── Public: stream a message ────────────────────────────────────────
@@ -227,18 +304,16 @@ async function readStream(res: Response, cb: StreamCallbacks): Promise<StreamRes
 export async function streamMessage(
   messages: ApiMessage[],
   model: ModelId,
-  onText: (chunk: string) => void,
-  onThinking: (chunk: string) => void,
-  system?: string,
-  signal?: AbortSignal,
-  maxTokens = 32000,
+  callbacks: StreamCallbacks,
+  options: StreamOptions = {},
 ): Promise<StreamResult> {
+  const { system, signal, maxTokens = 32000, tools } = options;
   let accessToken = await getAccessToken();
   let authRetried = false;
   let overloadAttempt = 0;
 
   while (true) {
-    const { url, init } = buildRequest(accessToken, messages, model, maxTokens, system);
+    const { url, init } = buildRequest(accessToken, messages, model, maxTokens, system, tools);
     const res = await fetch(url, { ...init, signal });
 
     // Auth errors → refresh once
@@ -269,7 +344,6 @@ export async function streamMessage(
       throw new Error(`API error (${res.status}): ${text}`);
     }
 
-    // Stream the response
-    return readStream(res, { onText, onThinking });
+    return readStream(res, callbacks);
   }
 }

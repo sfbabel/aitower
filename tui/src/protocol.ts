@@ -4,8 +4,7 @@
  * Transport: Unix domain socket, newline-delimited JSON.
  * Commands flow client → daemon. Events flow daemon → client.
  *
- * NOTE: This is an independent copy of the daemon's protocol.ts.
- * Both packages must stay in sync.
+ * NOTE: Independent copy of the daemon's protocol.ts. Keep in sync.
  */
 
 // ── Models ──────────────────────────────────────────────────────────
@@ -17,6 +16,36 @@ export const MODEL_MAP: Record<ModelId, string> = {
   haiku:  "claude-haiku-4-5-20251001",
   opus:   "claude-opus-4-6",
 };
+
+// ── Blocks (the atoms of an AI message) ─────────────────────────────
+
+export interface ThinkingBlock {
+  type: "thinking";
+  text: string;
+}
+
+export interface TextBlock {
+  type: "text";
+  text: string;
+}
+
+export interface ToolCallBlock {
+  type: "tool_call";
+  toolCallId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  summary: string;
+}
+
+export interface ToolResultBlock {
+  type: "tool_result";
+  toolCallId: string;
+  toolName: string;
+  output: string;
+  isError: boolean;
+}
+
+export type Block = ThinkingBlock | TextBlock | ToolCallBlock | ToolResultBlock;
 
 // ── Commands (client → daemon) ──────────────────────────────────────
 
@@ -96,6 +125,14 @@ export interface StreamingStoppedEvent {
   convId: string;
 }
 
+// ── Block-level streaming events (sent to subscribers) ──────────────
+
+export interface BlockStartEvent {
+  type: "block_start";
+  convId: string;
+  blockType: "text" | "thinking";
+}
+
 export interface TextChunkEvent {
   type: "text_chunk";
   convId: string;
@@ -108,10 +145,28 @@ export interface ThinkingChunkEvent {
   text: string;
 }
 
+export interface ToolCallEvent {
+  type: "tool_call";
+  convId: string;
+  toolCallId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  summary: string;
+}
+
+export interface ToolResultEvent {
+  type: "tool_result";
+  convId: string;
+  toolCallId: string;
+  toolName: string;
+  output: string;
+  isError: boolean;
+}
+
 export interface MessageCompleteEvent {
   type: "message_complete";
   convId: string;
-  text: string;
+  blocks: Block[];
   model: ModelId;
   tokens?: number;
   durationMs?: number;
@@ -130,7 +185,10 @@ export type Event =
   | ConversationCreatedEvent
   | StreamingStartedEvent
   | StreamingStoppedEvent
+  | BlockStartEvent
   | TextChunkEvent
   | ThinkingChunkEvent
+  | ToolCallEvent
+  | ToolResultEvent
   | MessageCompleteEvent
   | ErrorEvent;

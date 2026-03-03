@@ -2,26 +2,28 @@
  * Command handler for exocortexd.
  *
  * Routes IPC commands, manages in-memory conversation state,
- * and drives the Anthropic streaming API.
+ * and drives the agent loop for AI responses.
  */
 
 import { log } from "./log";
 import { loadAuth } from "./store";
-import { streamMessage, type ApiMessage, type StreamResult, AuthError } from "./api";
+import { AuthError } from "./api";
+import { runAgentLoop, type AgentCallbacks } from "./agent";
 import { DaemonServer, type ConnectedClient } from "./server";
-import type { Command, ModelId, Event } from "./protocol";
+import type { Command, ModelId, Block } from "./protocol";
+import type { ApiMessage } from "./api";
 
 // ── Conversation state ──────────────────────────────────────────────
 
-interface Message {
+interface StoredMessage {
   role: "user" | "assistant";
-  text: string;
+  content: ApiMessage["content"];
 }
 
 interface Conversation {
   id: string;
   model: ModelId;
-  messages: Message[];
+  messages: StoredMessage[];
   streaming: boolean;
   abortController: AbortController | null;
   createdAt: number;
@@ -57,13 +59,11 @@ export function createHandler(server: DaemonServer) {
   return async function handleCommand(client: ConnectedClient, cmd: Command): Promise<void> {
     switch (cmd.type) {
 
-      // ── ping ──────────────────────────────────────────────────
       case "ping": {
         server.sendTo(client, { type: "pong", reqId: cmd.reqId });
         break;
       }
 
-      // ── new_conversation ──────────────────────────────────────
       case "new_conversation": {
         const id = generateId();
         const model = cmd.model ?? "sonnet";
@@ -84,7 +84,6 @@ export function createHandler(server: DaemonServer) {
         break;
       }
 
-      // ── subscribe / unsubscribe ───────────────────────────────
       case "subscribe": {
         server.subscribe(client, cmd.convId);
         server.sendTo(client, { type: "ack", reqId: cmd.reqId, convId: cmd.convId });
@@ -96,7 +95,6 @@ export function createHandler(server: DaemonServer) {
         break;
       }
 
-      // ── abort ─────────────────────────────────────────────────
       case "abort": {
         const ac = activeJobs.get(cmd.convId);
         if (ac) {
@@ -107,7 +105,6 @@ export function createHandler(server: DaemonServer) {
         break;
       }
 
-      // ── send_message ──────────────────────────────────────────
       case "send_message": {
         await handleSendMessage(server, client, cmd.reqId, cmd.convId, cmd.text);
         break;
@@ -152,7 +149,7 @@ async function handleSendMessage(
   }
 
   // Add user message
-  conv.messages.push({ role: "user", text });
+  conv.messages.push({ role: "user", content: text });
 
   // Set up abort
   const ac = new AbortController();
@@ -163,55 +160,72 @@ async function handleSendMessage(
   const startedAt = Date.now();
   server.broadcast({ type: "streaming_started", convId, model: conv.model, startedAt });
 
-  // Build API messages
+  // Build API messages from stored conversation
   const apiMessages: ApiMessage[] = conv.messages.map((m) => ({
     role: m.role,
-    content: m.text,
+    content: m.content,
   }));
 
-  let fullText = "";
+  // Wire callbacks to IPC events
+  const callbacks: AgentCallbacks = {
+    onBlockStart(blockType) {
+      server.sendToSubscribers(convId, { type: "block_start", convId, blockType });
+    },
+    onTextChunk(chunk) {
+      server.sendToSubscribers(convId, { type: "text_chunk", convId, text: chunk });
+    },
+    onThinkingChunk(chunk) {
+      server.sendToSubscribers(convId, { type: "thinking_chunk", convId, text: chunk });
+    },
+    onToolCall(block) {
+      server.sendToSubscribers(convId, {
+        type: "tool_call", convId,
+        toolCallId: block.toolCallId,
+        toolName: block.toolName,
+        input: block.input,
+        summary: block.summary,
+      });
+    },
+    onToolResult(block) {
+      server.sendToSubscribers(convId, {
+        type: "tool_result", convId,
+        toolCallId: block.toolCallId,
+        toolName: block.toolName,
+        output: block.output,
+        isError: block.isError,
+      });
+    },
+  };
 
   try {
-    const result = await streamMessage(
-      apiMessages,
-      conv.model,
-      // onText
-      (chunk) => {
-        fullText += chunk;
-        server.sendToSubscribers(convId, { type: "text_chunk", convId, text: chunk });
-      },
-      // onThinking
-      (chunk) => {
-        server.sendToSubscribers(convId, { type: "thinking_chunk", convId, text: chunk });
-      },
-      buildSystemPrompt(),
-      ac.signal,
-    );
+    const result = await runAgentLoop(apiMessages, conv.model, callbacks, {
+      system: buildSystemPrompt(),
+      signal: ac.signal,
+    });
 
-    // Store assistant message
-    conv.messages.push({ role: "assistant", text: result.text });
+    // Store assistant response: extract text blocks for simple storage,
+    // but keep full block data available for the complete event
+    const textContent = result.blocks
+      .filter((b): b is Extract<Block, { type: "text" }> => b.type === "text")
+      .map(b => b.text)
+      .join("\n");
 
-    const durationMs = Date.now() - startedAt;
+    conv.messages.push({ role: "assistant", content: textContent });
+
     server.sendToSubscribers(convId, {
       type: "message_complete",
       convId,
-      text: result.text,
-      model: conv.model,
-      tokens: result.outputTokens,
-      durationMs,
+      blocks: result.blocks,
+      model: result.model,
+      tokens: result.tokens,
+      durationMs: result.durationMs,
     });
 
-    log("info", `handler: message complete for ${convId} (${result.outputTokens ?? "?"} tokens, ${durationMs}ms)`);
+    log("info", `handler: message complete for ${convId} (${result.tokens} tokens, ${result.blocks.length} blocks, ${result.durationMs}ms)`);
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log("error", `handler: stream error for ${convId}: ${msg}`);
-
-    // If we got partial text, save it
-    if (fullText) {
-      conv.messages.push({ role: "assistant", text: fullText + "\n[interrupted]" });
-    }
-
     server.sendToSubscribers(convId, { type: "error", convId, message: msg });
   } finally {
     activeJobs.delete(convId);

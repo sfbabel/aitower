@@ -10,28 +10,13 @@
 
 import { DaemonClient } from "./client";
 import { parseKeys, type KeyEvent } from "./input";
-import {
-  render, enter_alt, leave_alt, hide_cursor, show_cursor, clear_screen,
-  type RenderState, type DisplayMessage,
-} from "./render";
-import type { Event, ModelId } from "./protocol";
+import { render, enter_alt, leave_alt, hide_cursor, show_cursor } from "./render";
+import { createInitialState, type AIMessage } from "./state";
+import type { Event, ModelId, Block } from "./protocol";
 
 // ── State ───────────────────────────────────────────────────────────
 
-const state: RenderState = {
-  messages: [],
-  streamingText: "",
-  streaming: false,
-  streamStartedAt: null,
-  model: "sonnet",
-  convId: null,
-  inputBuffer: "",
-  cursorPos: 0,
-  cols: process.stdout.columns || 80,
-  rows: process.stdout.rows || 24,
-  scrollOffset: 0,
-};
-
+const state = createInitialState();
 let running = true;
 let daemon: DaemonClient;
 let pendingSendAfterCreate = false;
@@ -46,7 +31,25 @@ function scheduleRender(): void {
   renderTimer = setTimeout(() => {
     renderTimer = null;
     render(state);
-  }, 16); // ~60fps cap
+  }, 16);
+}
+
+// ── Pending AI helpers ──────────────────────────────────────────────
+
+/** Get or create the last block of the given type in the pending AI message. */
+function ensureCurrentBlock(type: "text" | "thinking"): Block {
+  if (!state.pendingAI) return { type, text: "" };
+
+  const blocks = state.pendingAI.blocks;
+  const last = blocks[blocks.length - 1];
+
+  // Reuse the last block if it matches the type
+  if (last && last.type === type) return last;
+
+  // Otherwise start a new block
+  const block: Block = { type, text: "" };
+  blocks.push(block);
+  return block;
 }
 
 // ── Event handler (daemon → TUI) ───────────────────────────────────
@@ -56,8 +59,6 @@ function handleEvent(event: Event): void {
     case "conversation_created": {
       state.convId = event.convId;
       state.model = event.model;
-
-      // Subscribe to this conversation's streaming events
       daemon.subscribe(event.convId);
 
       // If we had a pending message, send it now
@@ -72,50 +73,88 @@ function handleEvent(event: Event): void {
 
     case "streaming_started": {
       state.streaming = true;
-      state.streamingText = "";
       state.streamStartedAt = event.startedAt;
-      state.scrollOffset = 0; // auto-scroll to bottom
+      state.scrollOffset = 0;
+      state.pendingAI = { role: "assistant", blocks: [] };
 
-      // Periodic re-render to update elapsed time display
       if (streamTimer) clearInterval(streamTimer);
       streamTimer = setInterval(scheduleRender, 1000);
       break;
     }
 
+    case "block_start": {
+      if (state.pendingAI) {
+        state.pendingAI.blocks.push({ type: event.blockType, text: "" });
+      }
+      break;
+    }
+
     case "text_chunk": {
-      state.streamingText += event.text;
-      state.scrollOffset = 0; // stay at bottom while streaming
+      const block = ensureCurrentBlock("text");
+      if (block.type === "text") block.text += event.text;
+      state.scrollOffset = 0;
       break;
     }
 
     case "thinking_chunk": {
-      // For prototype, we don't display thinking — just ignore
+      const block = ensureCurrentBlock("thinking");
+      if (block.type === "thinking") block.text += event.text;
+      break;
+    }
+
+    case "tool_call": {
+      if (state.pendingAI) {
+        state.pendingAI.blocks.push({
+          type: "tool_call",
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          input: event.input,
+          summary: event.summary,
+        });
+      }
+      break;
+    }
+
+    case "tool_result": {
+      if (state.pendingAI) {
+        state.pendingAI.blocks.push({
+          type: "tool_result",
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          output: event.output,
+          isError: event.isError,
+        });
+      }
       break;
     }
 
     case "message_complete": {
-      state.messages.push({
-        role: "assistant",
-        text: event.text,
-        durationMs: event.durationMs,
-      });
-      state.streamingText = "";
+      // Finalize the pending AI message with server-provided data
+      if (state.pendingAI) {
+        state.pendingAI.model = event.model;
+        state.pendingAI.tokens = event.tokens;
+        state.pendingAI.durationMs = event.durationMs;
+        // Use blocks from pending (already built incrementally)
+        state.messages.push(state.pendingAI);
+        state.pendingAI = null;
+      }
       break;
     }
 
     case "streaming_stopped": {
       state.streaming = false;
-      state.streamingText = "";
       state.streamStartedAt = null;
+      // If pendingAI wasn't finalized (e.g. error/abort), push what we have
+      if (state.pendingAI && state.pendingAI.blocks.length > 0) {
+        state.messages.push(state.pendingAI);
+      }
+      state.pendingAI = null;
       if (streamTimer) { clearInterval(streamTimer); streamTimer = null; }
       break;
     }
 
     case "error": {
-      state.messages.push({
-        role: "system",
-        text: `✗ ${event.message}`,
-      });
+      state.messages.push({ role: "system", text: `✗ ${event.message}` });
       break;
     }
 
@@ -143,7 +182,7 @@ function handleSubmit(): void {
     state.messages = [];
     state.convId = null;
     state.streaming = false;
-    state.streamingText = "";
+    state.pendingAI = null;
     state.inputBuffer = "";
     state.cursorPos = 0;
     state.scrollOffset = 0;
@@ -203,10 +242,7 @@ function handleKey(key: KeyEvent): void {
       state.cursorPos++;
       break;
     }
-    case "enter": {
-      handleSubmit();
-      break;
-    }
+    case "enter":     handleSubmit(); break;
     case "backspace": {
       if (state.cursorPos > 0) {
         state.inputBuffer =
@@ -224,25 +260,12 @@ function handleKey(key: KeyEvent): void {
       }
       break;
     }
-    case "left": {
-      if (state.cursorPos > 0) state.cursorPos--;
-      break;
-    }
-    case "right": {
-      if (state.cursorPos < state.inputBuffer.length) state.cursorPos++;
-      break;
-    }
-    case "home": {
-      state.cursorPos = 0;
-      break;
-    }
-    case "end": {
-      state.cursorPos = state.inputBuffer.length;
-      break;
-    }
+    case "left":      if (state.cursorPos > 0) state.cursorPos--; break;
+    case "right":     if (state.cursorPos < state.inputBuffer.length) state.cursorPos++; break;
+    case "home":      state.cursorPos = 0; break;
+    case "end":       state.cursorPos = state.inputBuffer.length; break;
     case "up": {
-      // Scroll up
-      const allLines = state.messages.length * 3; // rough estimate
+      const allLines = state.messages.length * 3;
       const maxScroll = Math.max(0, allLines - (state.rows - 5));
       state.scrollOffset = Math.min(state.scrollOffset + 3, maxScroll);
       break;
@@ -252,19 +275,12 @@ function handleKey(key: KeyEvent): void {
       break;
     }
     case "escape": {
-      // Abort streaming
-      if (state.streaming && state.convId) {
-        daemon.abort(state.convId);
-      }
+      if (state.streaming && state.convId) daemon.abort(state.convId);
       break;
     }
     case "ctrl-c":
-    case "ctrl-d": {
-      running = false;
-      break;
-    }
-    default:
-      return; // don't re-render for unknown keys
+    case "ctrl-d":    running = false; break;
+    default:          return;
   }
   scheduleRender();
 }
@@ -273,23 +289,18 @@ function handleKey(key: KeyEvent): void {
 
 function setupTerminal(): void {
   process.stdout.write(enter_alt + hide_cursor);
-  if (process.stdin.isTTY) {
-    process.stdin.setRawMode(true);
-  }
+  if (process.stdin.isTTY) process.stdin.setRawMode(true);
   process.stdin.resume();
 }
 
 function restoreTerminal(): void {
-  if (process.stdin.isTTY) {
-    process.stdin.setRawMode(false);
-  }
+  if (process.stdin.isTTY) process.stdin.setRawMode(false);
   process.stdout.write(show_cursor + leave_alt);
 }
 
 // ── Main ────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  // Connect to daemon
   daemon = new DaemonClient(handleEvent);
   try {
     await daemon.connect();
@@ -298,42 +309,32 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Handle daemon disconnection
   daemon.onConnectionLost(() => {
     state.streaming = false;
+    state.pendingAI = null;
     state.messages.push({ role: "system", text: "⚠ Lost connection to daemon." });
     scheduleRender();
     setTimeout(() => { running = false; }, 2000);
   });
 
-  // Set up terminal
   setupTerminal();
 
-  // Handle resize
   process.stdout.on("resize", () => {
     state.cols = process.stdout.columns || 80;
     state.rows = process.stdout.rows || 24;
     scheduleRender();
   });
 
-  // Initial render
-  state.messages.push({
-    role: "system",
-    text: "Connected to exocortexd. Type a message to begin.",
-  });
+  state.messages.push({ role: "system", text: "Connected to exocortexd. Type a message to begin." });
   render(state);
 
-  // Input loop
   process.stdin.on("data", (data: Buffer) => {
     const keys = parseKeys(data);
     for (const key of keys) {
       handleKey(key);
       if (!running) break;
     }
-
-    if (!running) {
-      cleanup();
-    }
+    if (!running) cleanup();
   });
 }
 
@@ -344,7 +345,6 @@ function cleanup(): void {
   process.exit(0);
 }
 
-// Handle cleanup on signals
 process.on("exit", () => restoreTerminal());
 process.on("SIGINT", cleanup);
 process.on("SIGTERM", cleanup);
