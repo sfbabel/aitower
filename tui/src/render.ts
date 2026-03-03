@@ -159,7 +159,8 @@ function buildMessageLines(state: RenderState): string[] {
     } else if (msg.role === "assistant") {
       lines.push(...renderAIMessage(msg, contentWidth));
     } else {
-      lines.push(`  ${DIM}${msg.text}${RESET}`);
+      const color = msg.color || DIM;
+      lines.push(`  ${color}${msg.text}${RESET}`);
     }
   }
 

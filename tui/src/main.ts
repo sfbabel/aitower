@@ -137,11 +137,15 @@ function handleEvent(event: Event): void {
 
     case "streaming_stopped": {
       // If pendingAI wasn't finalized (e.g. error/abort), push what we have
+      const wasInterrupted = state.pendingAI !== null;
       if (state.pendingAI && state.pendingAI.blocks.length > 0) {
         state.pendingAI.metadata.endedAt ??= Date.now();
         state.messages.push(state.pendingAI);
       }
       state.pendingAI = null;
+      if (wasInterrupted) {
+        state.messages.push({ role: "system", text: "• Interrupted", color: "\x1b[31m", metadata: null });
+      }
       if (streamTickTimer) { clearTimeout(streamTickTimer); streamTickTimer = null; }
       break;
     }

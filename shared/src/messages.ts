@@ -81,6 +81,7 @@ export interface AIMessage {
 export interface SystemMessage {
   role: "system";
   text: string;
+  color?: string;
   metadata: MessageMetadata | null;
 }
 
