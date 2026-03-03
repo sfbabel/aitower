@@ -147,7 +147,7 @@ function handleEvent(event: Event): void {
 
       // Flush errors that arrived during streaming (after the AI message)
       for (const msg of pendingErrors) {
-        state.messages.push({ role: "system", text: `✗ ${msg}`, metadata: null });
+        state.messages.push({ role: "system", text: `✗ ${msg}`, color: "\x1b[31m", metadata: null });
       }
       pendingErrors = [];
 
@@ -162,7 +162,7 @@ function handleEvent(event: Event): void {
       if (isStreaming(state)) {
         pendingErrors.push(event.message);
       } else {
-        state.messages.push({ role: "system", text: `✗ ${event.message}`, metadata: null });
+        state.messages.push({ role: "system", text: `✗ ${event.message}`, color: "\x1b[31m", metadata: null });
       }
       break;
     }
@@ -320,7 +320,7 @@ async function main(): Promise<void> {
 
   daemon.onConnectionLost(() => {
     state.pendingAI = null;
-    state.messages.push({ role: "system", text: "⚠ Lost connection to daemon.", metadata: null });
+    state.messages.push({ role: "system", text: "✗ Lost connection to daemon.", color: "\x1b[31m", metadata: null });
     scheduleRender();
     setTimeout(() => { running = false; }, 2000);
   });
