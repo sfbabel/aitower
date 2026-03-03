@@ -8,7 +8,7 @@
 import type { Block, AIMessage } from "./messages";
 import { isStreaming, type RenderState } from "./state";
 import { renderMetadata } from "./metadata";
-import { renderStatusLine, statusLineHeight } from "./statusline";
+import { renderStatusLine, STATUS_LINE_HEIGHT } from "./statusline";
 
 // ── ANSI helpers ────────────────────────────────────────────────────
 
@@ -193,17 +193,17 @@ export function render(state: RenderState): void {
   out.push(move_to(2, 1) + clear_line);
   out.push(`${DIM}${"─".repeat(cols)}${RESET}`);
 
-  // ── Status line (below input) ──────────────────────────────────
+  // ── Bottom layout: sep | input | sep | status ──────────────────
   const statusLines = renderStatusLine(state.usage);
-  const slHeight = statusLines.length;
+  const inputRow = rows - 1 - STATUS_LINE_HEIGHT;
+  const sepAbove = inputRow - 1;
+  const sepBelow = inputRow + 1;
 
-  // ── Input area ────────────────────────────────────────────────
-  const inputRow = rows - slHeight - 1;
-  const sepRow = inputRow - 1;
-
-  out.push(move_to(sepRow, 1) + clear_line);
+  // Separator above input
+  out.push(move_to(sepAbove, 1) + clear_line);
   out.push(`${DIM}${"─".repeat(cols)}${RESET}`);
 
+  // Input prompt
   const prompt = `${BOLD}${BLUE} ❯${RESET} `;
   const promptLen = 3;
   const inputWidth = cols - promptLen;
@@ -217,15 +217,19 @@ export function render(state: RenderState): void {
   out.push(move_to(inputRow, 1) + clear_line);
   out.push(prompt + displayInput);
 
-  // ── Render status lines ───────────────────────────────────────
-  for (let i = 0; i < slHeight; i++) {
-    out.push(move_to(inputRow + 1 + i, 1) + clear_line);
+  // Separator below input
+  out.push(move_to(sepBelow, 1) + clear_line);
+  out.push(`${DIM}${"─".repeat(cols)}${RESET}`);
+
+  // Status lines
+  for (let i = 0; i < STATUS_LINE_HEIGHT; i++) {
+    out.push(move_to(sepBelow + 1 + i, 1) + clear_line);
     out.push(statusLines[i]);
   }
 
-  // ── Message area (rows 3 to sepRow-1) ─────────────────────────
+  // ── Message area (rows 3 to sepAbove-1) ────────────────────────
   const messageAreaStart = 3;
-  const messageAreaHeight = sepRow - messageAreaStart;
+  const messageAreaHeight = sepAbove - messageAreaStart;
   const allLines = buildMessageLines(state);
   const totalLines = allLines.length;
 

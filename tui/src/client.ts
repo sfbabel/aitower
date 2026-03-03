@@ -93,6 +93,10 @@ export class DaemonClient {
     this.send({ type: "send_message", convId, text, startedAt });
   }
 
+  ping(): void {
+    this.send({ type: "ping" });
+  }
+
   abort(convId: string): void {
     this.send({ type: "abort", convId });
   }

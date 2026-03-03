@@ -3,6 +3,7 @@
  *
  * Renders the usage bars below the input prompt.
  * This is the only file that knows how to display usage data.
+ * Always renders both windows — shows ?% and resets in ? when data is unavailable.
  */
 
 import type { UsageData, UsageWindow } from "./messages";
@@ -19,7 +20,10 @@ const FG_WHITE = `${ESC}37m`;
 
 const BAR_WIDTH = 20;
 
-function renderBar(pct: number): string {
+function renderBar(pct: number | null): string {
+  if (pct === null) {
+    return DIM + "\u2591".repeat(BAR_WIDTH);
+  }
   const clamped = Math.max(0, Math.min(100, pct));
   const filled = Math.round((clamped / 100) * BAR_WIDTH);
   const empty = BAR_WIDTH - filled;
@@ -27,9 +31,9 @@ function renderBar(pct: number): string {
 }
 
 function formatTimeUntil(resetMs: number | null, now: number): string {
-  if (resetMs === null) return "";
+  if (resetMs === null) return "?";
   const diff = Math.floor((resetMs - now) / 1000);
-  if (diff <= 0) return "";
+  if (diff <= 0) return "?";
 
   const days = Math.floor(diff / 86400);
   const hours = Math.floor((diff % 86400) / 3600);
@@ -43,41 +47,24 @@ function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
 }
 
-function renderWindowLine(label: string, window: UsageWindow, now: number): string {
-  const pctStr = `${Math.round(window.utilization)}%`;
-  const resetStr = formatTimeUntil(window.resetsAt, now);
-  const bar = renderBar(window.utilization);
-  const resetPart = resetStr ? ` resets in ${FG_ACCENT}${resetStr}` : "";
-  return `${DIM}${label}: ${FG_WHITE}[${bar}${FG_WHITE}]${DIM} ${FG_ACCENT}${pctStr}${DIM}${resetPart}${RESET}`;
+function renderWindowLine(label: string, window: UsageWindow | null, now: number): string {
+  const pct = window ? Math.round(window.utilization) : null;
+  const pctStr = pct !== null ? `${pct}%` : "?%";
+  const resetStr = formatTimeUntil(window?.resetsAt ?? null, now);
+  const bar = renderBar(pct);
+  return `${DIM}${label}: ${FG_WHITE}[${bar}${FG_WHITE}]${DIM} ${FG_ACCENT}${pctStr}${DIM} resets in ${FG_ACCENT}${resetStr}${RESET}`;
 }
 
 // ── Public renderer ─────────────────────────────────────────────────
 
-/**
- * Render the status line.
- * Returns an array of ANSI strings (one per row), or empty if no data.
- */
+/** Always returns 2 lines — 5-Hour and Weekly. */
 export function renderStatusLine(usage: UsageData | null): string[] {
-  if (!usage) return [];
-
   const now = Date.now();
-  const lines: string[] = [];
-
-  if (usage.fiveHour) {
-    lines.push(renderWindowLine("5-Hour", usage.fiveHour, now));
-  }
-  if (usage.sevenDay) {
-    lines.push(renderWindowLine("Weekly", usage.sevenDay, now));
-  }
-
-  return lines;
+  return [
+    renderWindowLine("5-Hour", usage?.fiveHour ?? null, now),
+    renderWindowLine("Weekly", usage?.sevenDay ?? null, now),
+  ];
 }
 
-/** Number of terminal rows the status line occupies. */
-export function statusLineHeight(usage: UsageData | null): number {
-  if (!usage) return 0;
-  let h = 0;
-  if (usage.fiveHour) h++;
-  if (usage.sevenDay) h++;
-  return h;
-}
+/** Always 2 rows. */
+export const STATUS_LINE_HEIGHT = 2;

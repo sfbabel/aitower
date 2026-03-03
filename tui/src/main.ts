@@ -323,6 +323,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Request initial usage data from daemon
+  daemon.ping();
+
   daemon.onConnectionLost(() => {
     state.pendingAI = null;
     state.messages.push({ role: "system", text: "✗ Lost connection to daemon.", color: "\x1b[31m", metadata: null });
