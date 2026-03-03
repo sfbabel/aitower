@@ -32,8 +32,17 @@ export interface Theme {
   tool: string;        // Tool call labels
 
   // Background colors
-  topbarBg: string;    // Top bar
-  userBg: string;      // User message bubble
+  topbarBg: string;       // Top bar
+  userBg: string;         // User message bubble
+  sidebarBg: string;      // Sidebar body
+  sidebarSelBg: string;   // Sidebar selected item
+
+  // Border colors
+  borderFocused: string;  // Focused panel border
+  borderUnfocused: string; // Unfocused panel border
+
+  // Style end
+  boldOff: string;        // End bold
 }
 
 // ── Active theme ────────────────────────────────────────────────────

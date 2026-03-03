@@ -9,12 +9,17 @@ import type { KeyEvent } from "./input";
 import type { ConversationSummary } from "./messages";
 import { theme } from "./theme";
 
+// ── Constants ───────────────────────────────────────────────────────
+
+export const SIDEBAR_WIDTH = 28;
+
 // ── State ───────────────────────────────────────────────────────────
 
 export interface SidebarState {
   open: boolean;
   conversations: ConversationSummary[];
   selectedIndex: number;
+  scrollOffset: number;
 }
 
 export function createSidebarState(): SidebarState {
@@ -22,6 +27,7 @@ export function createSidebarState(): SidebarState {
     open: false,
     conversations: [],
     selectedIndex: 0,
+    scrollOffset: 0,
   };
 }
 
@@ -36,25 +42,24 @@ export function handleSidebarKey(key: KeyEvent, sidebar: SidebarState): SidebarK
   switch (key.type) {
     case "char":
       if (key.char === "j" || key.char === "J") {
-        sidebar.selectedIndex = Math.min(sidebar.selectedIndex + 1, sidebar.conversations.length - 1);
+        moveSelection(sidebar, 1);
         return { type: "handled" };
       }
       if (key.char === "k" || key.char === "K") {
-        sidebar.selectedIndex = Math.max(sidebar.selectedIndex - 1, 0);
+        moveSelection(sidebar, -1);
         return { type: "handled" };
       }
-      // i or a → switch focus to chat
       if (key.char === "i" || key.char === "a") {
         return { type: "unhandled" };
       }
       return { type: "handled" };
 
     case "up":
-      sidebar.selectedIndex = Math.max(sidebar.selectedIndex - 1, 0);
+      moveSelection(sidebar, -1);
       return { type: "handled" };
 
     case "down":
-      sidebar.selectedIndex = Math.min(sidebar.selectedIndex + 1, sidebar.conversations.length - 1);
+      moveSelection(sidebar, 1);
       return { type: "handled" };
 
     case "enter":
@@ -68,11 +73,17 @@ export function handleSidebarKey(key: KeyEvent, sidebar: SidebarState): SidebarK
   }
 }
 
+function moveSelection(sidebar: SidebarState, delta: number): void {
+  sidebar.selectedIndex = Math.max(0, Math.min(
+    sidebar.selectedIndex + delta,
+    sidebar.conversations.length - 1,
+  ));
+}
+
 // ── State updates ───────────────────────────────────────────────────
 
 export function updateConversationList(sidebar: SidebarState, conversations: ConversationSummary[]): void {
   sidebar.conversations = conversations;
-  // Clamp selection
   if (sidebar.selectedIndex >= conversations.length) {
     sidebar.selectedIndex = Math.max(0, conversations.length - 1);
   }
@@ -83,64 +94,97 @@ export function updateConversation(sidebar: SidebarState, summary: ConversationS
   if (idx !== -1) {
     sidebar.conversations[idx] = summary;
   } else {
-    // New conversation — add to front (sorted by updatedAt desc)
     sidebar.conversations.unshift(summary);
   }
-  // Re-sort
   sidebar.conversations.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+/** Pad or truncate a string to exactly `width` visible characters. */
+function pad(text: string, width: number): string {
+  if (text.length >= width) return text.slice(0, width);
+  return text + " ".repeat(width - text.length);
 }
 
 // ── Rendering ───────────────────────────────────────────────────────
 
-export const SIDEBAR_WIDTH = 30;
-
 export function renderSidebar(
   sidebar: SidebarState,
-  rows: number,
+  totalRows: number,
   focused: boolean,
+  currentConvId: string | null,
 ): string[] {
-  const lines: string[] = [];
-  const w = SIDEBAR_WIDTH;
+  const rows: string[] = [];
+  const innerWidth = SIDEBAR_WIDTH - 1; // -1 for right border │
+  const borderFg = focused ? theme.borderFocused : theme.borderUnfocused;
 
-  // Title row
-  const titleText = " Conversations";
-  const titlePad = " ".repeat(Math.max(0, w - titleText.length));
-  lines.push(`${theme.topbarBg}${theme.bold}${titleText}${theme.reset}${theme.topbarBg}${titlePad}${theme.reset}`);
+  // Row 1: header
+  const header = " Conversations";
+  rows.push(
+    theme.sidebarBg + theme.text + theme.bold +
+    pad(header, innerWidth) +
+    theme.reset + borderFg + "│" + theme.reset,
+  );
 
-  // Separator
-  const sepColor = focused ? theme.accent : theme.dim;
-  lines.push(`${sepColor}${"─".repeat(w)}${theme.reset}`);
+  // Row 2: separator with ┤ junction
+  rows.push(
+    borderFg +
+    "─".repeat(innerWidth) + "┤" + theme.reset,
+  );
 
-  // Conversation list
-  const listHeight = rows - 2; // minus title + separator
+  // Remaining rows: conversation list
+  const listRows = totalRows - 2;
   const convs = sidebar.conversations;
 
   // Scroll to keep selection visible
-  let scrollStart = 0;
-  if (sidebar.selectedIndex >= listHeight) {
-    scrollStart = sidebar.selectedIndex - listHeight + 1;
+  let scrollOffset = sidebar.scrollOffset;
+  if (sidebar.selectedIndex < scrollOffset) {
+    scrollOffset = sidebar.selectedIndex;
+  } else if (sidebar.selectedIndex >= scrollOffset + listRows) {
+    scrollOffset = sidebar.selectedIndex - listRows + 1;
   }
+  scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, convs.length - listRows)));
+  sidebar.scrollOffset = scrollOffset;
 
-  for (let i = 0; i < listHeight; i++) {
-    const ci = scrollStart + i;
+  for (let i = 0; i < listRows; i++) {
+    const ci = scrollOffset + i;
+
     if (ci >= convs.length) {
-      lines.push(" ".repeat(w));
+      // Empty row
+      rows.push(
+        theme.sidebarBg +
+        " ".repeat(innerWidth) +
+        theme.reset + borderFg + "│" + theme.reset,
+      );
       continue;
     }
 
     const conv = convs[ci];
     const isSelected = ci === sidebar.selectedIndex;
-    const prefix = isSelected ? (focused ? `${theme.accent}▸ ` : `${theme.muted}▸ `) : "  ";
-    const preview = conv.preview || "(empty)";
-    const truncated = preview.length > w - 4 ? preview.slice(0, w - 7) + "..." : preview;
-    const padLen = Math.max(0, w - truncated.length - 2);
+    const isCurrent = conv.id === currentConvId;
 
-    if (isSelected) {
-      lines.push(`${prefix}${theme.text}${truncated}${" ".repeat(padLen)}${theme.reset}`);
-    } else {
-      lines.push(`${prefix}${theme.muted}${truncated}${" ".repeat(padLen)}${theme.reset}`);
-    }
+    // Build entry
+    const prefix = isSelected ? "▸ " : "  ";
+    const maxTitle = innerWidth - prefix.length;
+    let title = conv.preview || "(empty)";
+    // Take first line only
+    const nlIdx = title.indexOf("\n");
+    if (nlIdx !== -1) title = title.slice(0, nlIdx);
+    if (title.length > maxTitle) title = title.slice(0, maxTitle - 1) + "…";
+
+    const bg = isSelected ? theme.sidebarSelBg : theme.sidebarBg;
+    const fg = (isSelected || isCurrent) ? theme.text : theme.muted;
+    const titleText = isCurrent ? theme.bold + title + theme.boldOff : title;
+    const plainLen = prefix.length + title.length;
+    const padding = Math.max(0, innerWidth - plainLen);
+
+    rows.push(
+      bg + fg +
+      prefix + titleText + " ".repeat(padding) +
+      theme.reset + borderFg + "│" + theme.reset,
+    );
   }
 
-  return lines;
+  return rows;
 }

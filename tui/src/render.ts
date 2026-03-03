@@ -283,24 +283,40 @@ export function render(state: RenderState): void {
   const chatCol = sidebarW + 1;            // 1-based column where chat starts
   const chatW = cols - sidebarW;           // width available for chat area
 
+  // ── Pre-render sidebar ────────────────────────────────────────
+  // renderSidebar returns one row per screen row: header, separator,
+  // then list entries. Each row includes the right border │.
+  let sbRows: string[] = [];
+  if (sidebarOpen) {
+    sbRows = renderSidebar(
+      state.sidebar,
+      rows,
+      state.panelFocus === "sidebar",
+      state.convId,
+    );
+  }
+
   // ── Top bar (row 1, full width) ───────────────────────────────
   out.push(move_to(1, 1) + clear_line);
-  out.push(renderTopbar(state));
+  if (sidebarOpen) {
+    out.push(sbRows[0]);
+    // Chat portion of topbar starts at chatCol
+    out.push(move_to(1, chatCol));
+  }
+  out.push(renderTopbar(state, chatW));
 
-  // ── Separator after header (row 2) ────────────────────────────
+  // ── Row 2: separator ──────────────────────────────────────────
   const historyFocused = state.panelFocus === "chat" && state.chatFocus === "history";
   const historyColor = historyFocused ? theme.accent : theme.dim;
   out.push(move_to(2, 1) + clear_line);
   if (sidebarOpen) {
-    const sidebarFocused = state.panelFocus === "sidebar";
-    const sbSepColor = sidebarFocused ? theme.accent : theme.dim;
-    out.push(`${sbSepColor}${"─".repeat(sidebarW)}${theme.reset}${historyColor}${"─".repeat(chatW)}${theme.reset}`);
-  } else {
-    out.push(`${historyColor}${"─".repeat(cols)}${theme.reset}`);
+    out.push(sbRows[1]);
+    out.push(move_to(2, chatCol));
   }
+  out.push(`${historyColor}${"─".repeat(chatW)}${theme.reset}`);
 
   // ── Input line wrapping ────────────────────────────────────────
-  const promptLen = 3;               // " ❯ " or " + "
+  const promptLen = 3;
   const maxInputWidth = chatW - promptLen;
   const maxInputRows = Math.min(10, Math.floor((rows - 6) / 2));
 
@@ -321,51 +337,7 @@ export function render(state: RenderState): void {
   const promptFocused = state.panelFocus === "chat" && state.chatFocus === "prompt";
   const promptColor = promptFocused ? theme.accent : theme.dim;
 
-  out.push(move_to(sepAbove, chatCol) + `${promptColor}${"─".repeat(chatW)}${theme.reset}`);
-
-  // Input rows
-  for (let i = 0; i < inputRowCount; i++) {
-    const prompt = (i === 0 && !isNewLine[i])
-      ? `${theme.bold}${theme.prompt} ❯${theme.reset} `
-      : `${theme.dim} +${theme.reset} `;
-    out.push(move_to(firstInputRow + i, chatCol) + clear_line);
-    out.push(move_to(firstInputRow + i, chatCol) + prompt + inputLines[i]);
-  }
-
-  // Separator below input
-  out.push(move_to(sepBelow, chatCol) + `${promptColor}${"─".repeat(chatW)}${theme.reset}`);
-
-  // Status lines (full width, below everything)
-  for (let i = 0; i < slHeight; i++) {
-    out.push(move_to(sepBelow + 1 + i, 1) + clear_line);
-    out.push(statusLines[i]);
-  }
-
-  // ── Sidebar (rows 3 to sepAbove-1) ────────────────────────────
-  if (sidebarOpen) {
-    const sidebarRows = renderSidebar(
-      state.sidebar,
-      sepAbove - 2,
-      state.panelFocus === "sidebar",
-    );
-    // Sidebar title goes on row 1 (already have topbar there — skip, title is in row 3)
-    // Actually sidebar starts at row 3
-    for (let i = 0; i < sidebarRows.length && i < sepAbove - 2; i++) {
-      out.push(move_to(3 + i, 1));
-      out.push(sidebarRows[i]);
-    }
-    // Sidebar separator line for the bottom sections
-    if (sidebarOpen) {
-      const sbSepColor = state.panelFocus === "sidebar" ? theme.accent : theme.dim;
-      out.push(move_to(sepAbove, 1) + `${sbSepColor}${"─".repeat(sidebarW)}${theme.reset}`);
-      // Clear sidebar area below separator
-      for (let r = firstInputRow; r <= sepBelow; r++) {
-        out.push(move_to(r, 1) + " ".repeat(sidebarW));
-      }
-    }
-  }
-
-  // ── Message area (rows 3 to sepAbove-1, in chat column) ───────
+  // ── Message area (rows 3 to sepAbove-1) ────────────────────────
   const messageAreaStart = 3;
   const messageAreaHeight = sepAbove - messageAreaStart;
   const allLines = buildMessageLines(state);
@@ -380,11 +352,50 @@ export function render(state: RenderState): void {
 
   for (let i = 0; i < messageAreaHeight; i++) {
     const row = messageAreaStart + i;
-    out.push(move_to(row, chatCol) + `\x1b[${chatCol}G\x1b[K`);
+    out.push(move_to(row, 1) + clear_line);
+    // Sidebar column (if open)
+    if (sidebarOpen && sbRows[row - 1]) {
+      out.push(sbRows[row - 1]);
+    }
+    // Chat content at chatCol
+    out.push(move_to(row, chatCol));
     const lineIdx = viewStart + i;
     if (lineIdx < totalLines) {
       out.push(allLines[lineIdx]);
     }
+  }
+
+  // ── Separator above input ─────────────────────────────────────
+  out.push(move_to(sepAbove, 1) + clear_line);
+  if (sidebarOpen && sbRows[sepAbove - 1]) {
+    out.push(sbRows[sepAbove - 1]);
+  }
+  out.push(move_to(sepAbove, chatCol) + `${promptColor}${"─".repeat(chatW)}${theme.reset}`);
+
+  // ── Input rows ────────────────────────────────────────────────
+  for (let i = 0; i < inputRowCount; i++) {
+    const row = firstInputRow + i;
+    const prompt = (i === 0 && !isNewLine[i])
+      ? `${theme.bold}${theme.prompt} ❯${theme.reset} `
+      : `${theme.dim} +${theme.reset} `;
+    out.push(move_to(row, 1) + clear_line);
+    if (sidebarOpen && sbRows[row - 1]) {
+      out.push(sbRows[row - 1]);
+    }
+    out.push(move_to(row, chatCol) + prompt + inputLines[i]);
+  }
+
+  // ── Separator below input ─────────────────────────────────────
+  out.push(move_to(sepBelow, 1) + clear_line);
+  if (sidebarOpen && sbRows[sepBelow - 1]) {
+    out.push(sbRows[sepBelow - 1]);
+  }
+  out.push(move_to(sepBelow, chatCol) + `${promptColor}${"─".repeat(chatW)}${theme.reset}`);
+
+  // ── Status lines (full width) ─────────────────────────────────
+  for (let i = 0; i < slHeight; i++) {
+    out.push(move_to(sepBelow + 1 + i, 1) + clear_line);
+    out.push(statusLines[i]);
   }
 
   // ── Position cursor in input field ────────────────────────────

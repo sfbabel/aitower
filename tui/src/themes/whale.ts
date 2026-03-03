@@ -31,6 +31,15 @@ export const whale: Theme = {
   tool:     `${ESC}35m`,                 // magenta
 
   // Background colors
-  topbarBg: `${ESC}48;2;29;155;240m`,    // accent (#1d9bf0) as background
-  userBg:   `${ESC}48;2;9;13;53m`,       // #090d35
+  topbarBg:      `${ESC}48;2;29;155;240m`,    // accent (#1d9bf0) as background
+  userBg:        `${ESC}48;2;9;13;53m`,       // #090d35
+  sidebarBg:     `${ESC}48;2;3;8;20m`,        // #030814
+  sidebarSelBg:  `${ESC}48;2;15;25;60m`,      // #0f193c
+
+  // Border colors
+  borderFocused:   `${ESC}38;2;28;148;229m`,  // #1c94e5
+  borderUnfocused: `${ESC}38;2;85;85;85m`,    // #555555
+
+  // Style end
+  boldOff: `${ESC}22m`,
 };

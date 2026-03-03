@@ -9,8 +9,8 @@ import type { RenderState } from "./state";
 import { isStreaming } from "./state";
 import { theme } from "./theme";
 
-export function renderTopbar(state: RenderState): string {
-  const { cols } = state;
+export function renderTopbar(state: RenderState, width?: number): string {
+  const w = width ?? state.cols;
 
   const title = `${theme.bold} Exocortex${theme.reset}${theme.topbarBg}`;
   const modelLabel = `${state.model}`;
@@ -19,7 +19,7 @@ export function renderTopbar(state: RenderState): string {
 
   const inner = `${title}  ${statusDot}  ${convLabel}`;
   const visibleUsed = " Exocortex".length + 2 + 1 + 2 + convLabel.length;
-  const padding = Math.max(0, cols - visibleUsed - modelLabel.length - 1);
+  const padding = Math.max(0, w - visibleUsed - modelLabel.length - 1);
 
   return `${theme.topbarBg}${inner}${" ".repeat(padding)}${modelLabel} ${theme.reset}`;
 }
