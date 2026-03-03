@@ -8,6 +8,7 @@
 
 import type { KeyEvent } from "./input";
 import type { RenderState } from "./state";
+import { resolveAction } from "./keybinds";
 import { handlePromptKey } from "./promptline";
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -32,8 +33,10 @@ export function handleChatKey(key: KeyEvent, state: RenderState): ChatKeyResult 
 // ── Prompt focus ────────────────────────────────────────────────────
 
 function handlePromptFocused(key: KeyEvent, state: RenderState): ChatKeyResult {
-  // Ctrl+N → switch to history
-  if (key.type === "ctrl-n") {
+  const action = resolveAction(key);
+
+  // Ctrl+N toggles: prompt → history
+  if (action === "focus_history") {
     state.chatFocus = "history";
     return { type: "handled" };
   }
@@ -44,11 +47,11 @@ function handlePromptFocused(key: KeyEvent, state: RenderState): ChatKeyResult {
   if (result === "handled") return { type: "handled" };
 
   // Unhandled by promptline (up/down on first/last line) → scroll
-  if (key.type === "up") {
+  if (action === "cursor_up") {
     scrollUp(state);
     return { type: "handled" };
   }
-  if (key.type === "down") {
+  if (action === "cursor_down") {
     scrollDown(state);
     return { type: "handled" };
   }
@@ -59,24 +62,22 @@ function handlePromptFocused(key: KeyEvent, state: RenderState): ChatKeyResult {
 // ── History focus ───────────────────────────────────────────────────
 
 function handleHistoryFocused(key: KeyEvent, state: RenderState): ChatKeyResult {
-  switch (key.type) {
-    case "char":
-      // i or a → back to prompt (vim-style insert)
-      if (key.char === "i" || key.char === "a") {
-        state.chatFocus = "prompt";
-        return { type: "handled" };
-      }
-      return { type: "handled" };
+  const action = resolveAction(key, "navigation");
 
-    case "ctrl-n":
+  switch (action) {
+    case "focus_prompt":
+    case "focus_history":
+      // i/a → prompt, Ctrl+N toggles back to prompt
       state.chatFocus = "prompt";
       return { type: "handled" };
 
-    case "up":
+    case "nav_up":
+    case "cursor_up":
       scrollUp(state);
       return { type: "handled" };
 
-    case "down":
+    case "nav_down":
+    case "cursor_down":
       scrollDown(state);
       return { type: "handled" };
 

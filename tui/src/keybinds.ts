@@ -1,0 +1,113 @@
+/**
+ * Keybind definitions.
+ *
+ * Maps raw key events to semantic actions. The single source of truth
+ * for all keybindings in the TUI. Every handler checks action names,
+ * never raw key types.
+ *
+ * To change a keybind: edit this file. One line, one place.
+ * Future: load from user config to make keybinds customizable.
+ */
+
+import type { KeyEvent } from "./input";
+
+// ── Actions ─────────────────────────────────────────────────────────
+
+export type Action =
+  // Global
+  | "quit"
+  | "abort"
+  | "sidebar_toggle"
+  | "focus_cycle"
+  // Chat / focus
+  | "focus_prompt"
+  | "focus_history"
+  // Prompt editing
+  | "submit"
+  | "newline"
+  | "delete_back"
+  | "delete_forward"
+  | "cursor_left"
+  | "cursor_right"
+  | "cursor_up"
+  | "cursor_down"
+  | "cursor_home"
+  | "cursor_end"
+  // Navigation (sidebar, history scroll)
+  | "nav_up"
+  | "nav_down"
+  | "nav_select";
+
+// ── Keybind map ─────────────────────────────────────────────────────
+
+/** Key type → action. For "char" keys, use char:<char> format. */
+const BINDS: Record<string, Action> = {
+  // Global
+  "ctrl-c":     "quit",
+  "ctrl-d":     "quit",
+  "escape":     "abort",
+  "ctrl-m":     "sidebar_toggle",
+  "ctrl-j":     "focus_cycle",
+  "ctrl-k":     "focus_cycle",
+
+  // Chat focus switching
+  "ctrl-n":     "focus_history",
+
+  // Prompt editing
+  "enter":      "submit",
+  "ctrl-l":     "newline",
+  "backspace":  "delete_back",
+  "delete":     "delete_forward",
+  "left":       "cursor_left",
+  "right":      "cursor_right",
+  "up":         "cursor_up",
+  "down":       "cursor_down",
+  "home":       "cursor_home",
+  "end":        "cursor_end",
+
+};
+
+/**
+ * Context-specific bindings — only active outside the prompt.
+ * These keys are regular chars when typing, but navigation
+ * actions in sidebar/history contexts.
+ */
+const NAV_BINDS: Record<string, Action> = {
+  "char:j":     "nav_down",
+  "char:J":     "nav_down",
+  "char:k":     "nav_up",
+  "char:K":     "nav_up",
+  "char:i":     "focus_prompt",
+  "char:a":     "focus_prompt",
+};
+
+// ── Context ─────────────────────────────────────────────────────────
+
+export type KeyContext = "prompt" | "navigation";
+
+// ── Resolver ────────────────────────────────────────────────────────
+
+/**
+ * Resolve a key event to a semantic action.
+ * Returns null if the key has no binding.
+ *
+ * context = "navigation" enables j/k/i/a bindings (sidebar, history).
+ * context = "prompt" (default) keeps those as regular character input.
+ */
+export function resolveAction(key: KeyEvent, context: KeyContext = "prompt"): Action | null {
+  // Check char-specific bindings
+  if (key.type === "char" && key.char) {
+    // Navigation-context bindings (j/k/i/a)
+    if (context === "navigation") {
+      const navAction = NAV_BINDS[`char:${key.char}`];
+      if (navAction) return navAction;
+    }
+
+    // Global char bindings
+    const charAction = BINDS[`char:${key.char}`];
+    if (charAction) return charAction;
+  }
+
+  // Check type-level bindings
+  return BINDS[key.type] ?? null;
+}

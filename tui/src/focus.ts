@@ -11,6 +11,7 @@
 
 import type { KeyEvent } from "./input";
 import type { RenderState } from "./state";
+import { resolveAction } from "./keybinds";
 import { handleChatKey } from "./chat";
 import { handleSidebarKey } from "./sidebar";
 
@@ -28,21 +29,19 @@ export type KeyResult =
 // ── Key routing ─────────────────────────────────────────────────────
 
 export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
-  // Global keys — work regardless of focus
-  switch (key.type) {
-    case "ctrl-c":
-    case "ctrl-d":
+  const action = resolveAction(key);
+
+  // Global actions — work regardless of focus
+  switch (action) {
+    case "quit":
       return { type: "quit" };
-    case "escape":
+    case "abort":
       return { type: "abort" };
-    case "ctrl-m":
-      // Toggle sidebar open/close + focus
+    case "sidebar_toggle":
       state.sidebar.open = !state.sidebar.open;
       state.panelFocus = state.sidebar.open ? "sidebar" : "chat";
       return { type: "handled" };
-    case "ctrl-j":
-    case "ctrl-k":
-      // Cycle focus: sidebar ↔ chat (only if sidebar is open)
+    case "focus_cycle":
       if (state.sidebar.open) {
         state.panelFocus = state.panelFocus === "sidebar" ? "chat" : "sidebar";
       }
@@ -67,11 +66,8 @@ function handleSidebarFocused(key: KeyEvent, state: RenderState): KeyResult {
     case "select":
       return { type: "load_conversation", convId: result.convId };
     case "unhandled":
-      // i/a in sidebar → switch to chat
-      if (key.type === "char" && (key.char === "i" || key.char === "a")) {
-        state.panelFocus = "chat";
-        return { type: "handled" };
-      }
+      // focus_prompt comes back as unhandled from sidebar (i/a)
+      state.panelFocus = "chat";
       return { type: "handled" };
   }
 }

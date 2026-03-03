@@ -8,24 +8,28 @@
 
 import type { KeyEvent } from "./input";
 import type { RenderState } from "./state";
+import { resolveAction } from "./keybinds";
 
 /** Returns true if the key resulted in a submit (Enter). */
 export function handlePromptKey(state: RenderState, key: KeyEvent): "submit" | "handled" | "unhandled" {
-  switch (key.type) {
-    case "char": {
-      if (!key.char) return "handled";
-      state.inputBuffer =
-        state.inputBuffer.slice(0, state.cursorPos) +
-        key.char +
-        state.inputBuffer.slice(state.cursorPos);
-      state.cursorPos++;
-      return "handled";
-    }
+  const action = resolveAction(key);
 
-    case "enter":
+  // Char input — only when no action is bound to this key
+  if (key.type === "char" && action === null) {
+    if (!key.char) return "handled";
+    state.inputBuffer =
+      state.inputBuffer.slice(0, state.cursorPos) +
+      key.char +
+      state.inputBuffer.slice(state.cursorPos);
+    state.cursorPos++;
+    return "handled";
+  }
+
+  switch (action) {
+    case "submit":
       return "submit";
 
-    case "ctrl-l": {
+    case "newline": {
       state.inputBuffer =
         state.inputBuffer.slice(0, state.cursorPos) +
         "\n" +
@@ -34,7 +38,7 @@ export function handlePromptKey(state: RenderState, key: KeyEvent): "submit" | "
       return "handled";
     }
 
-    case "backspace": {
+    case "delete_back": {
       if (state.cursorPos > 0) {
         state.inputBuffer =
           state.inputBuffer.slice(0, state.cursorPos - 1) +
@@ -44,7 +48,7 @@ export function handlePromptKey(state: RenderState, key: KeyEvent): "submit" | "
       return "handled";
     }
 
-    case "delete": {
+    case "delete_forward": {
       if (state.cursorPos < state.inputBuffer.length) {
         state.inputBuffer =
           state.inputBuffer.slice(0, state.cursorPos) +
@@ -53,27 +57,27 @@ export function handlePromptKey(state: RenderState, key: KeyEvent): "submit" | "
       return "handled";
     }
 
-    case "left":
+    case "cursor_left":
       if (state.cursorPos > 0) state.cursorPos--;
       return "handled";
 
-    case "right":
+    case "cursor_right":
       if (state.cursorPos < state.inputBuffer.length) state.cursorPos++;
       return "handled";
 
-    case "home": {
+    case "cursor_home": {
       const lineStart = state.inputBuffer.lastIndexOf("\n", state.cursorPos - 1) + 1;
       state.cursorPos = lineStart;
       return "handled";
     }
 
-    case "end": {
+    case "cursor_end": {
       const nextNl = state.inputBuffer.indexOf("\n", state.cursorPos);
       state.cursorPos = nextNl === -1 ? state.inputBuffer.length : nextNl;
       return "handled";
     }
 
-    case "up": {
+    case "cursor_up": {
       const buf = state.inputBuffer;
       const currentLineStart = buf.lastIndexOf("\n", state.cursorPos - 1) + 1;
       if (currentLineStart > 0) {
@@ -83,11 +87,10 @@ export function handlePromptKey(state: RenderState, key: KeyEvent): "submit" | "
         state.cursorPos = prevLineStart + Math.min(colInLine, prevLineLen);
         return "handled";
       }
-      // On first line — not handled, let main.ts scroll messages
       return "unhandled";
     }
 
-    case "down": {
+    case "cursor_down": {
       const buf = state.inputBuffer;
       const nextNl = buf.indexOf("\n", state.cursorPos);
       if (nextNl !== -1) {
@@ -99,7 +102,6 @@ export function handlePromptKey(state: RenderState, key: KeyEvent): "submit" | "
         state.cursorPos = nextLineStart + Math.min(colInLine, nextLineLen);
         return "handled";
       }
-      // On last line — not handled, let main.ts scroll messages
       return "unhandled";
     }
 

@@ -7,6 +7,7 @@
 
 import type { KeyEvent } from "./input";
 import type { ConversationSummary } from "./messages";
+import { resolveAction, type KeyContext } from "./keybinds";
 import { theme } from "./theme";
 
 // ── Constants ───────────────────────────────────────────────────────
@@ -39,34 +40,29 @@ export type SidebarKeyResult =
   | { type: "unhandled" };
 
 export function handleSidebarKey(key: KeyEvent, sidebar: SidebarState): SidebarKeyResult {
-  switch (key.type) {
-    case "char":
-      if (key.char === "j" || key.char === "J") {
-        moveSelection(sidebar, 1);
-        return { type: "handled" };
-      }
-      if (key.char === "k" || key.char === "K") {
-        moveSelection(sidebar, -1);
-        return { type: "handled" };
-      }
-      if (key.char === "i" || key.char === "a") {
-        return { type: "unhandled" };
-      }
-      return { type: "handled" };
+  const action = resolveAction(key, "navigation");
 
-    case "up":
-      moveSelection(sidebar, -1);
-      return { type: "handled" };
-
-    case "down":
+  switch (action) {
+    case "nav_down":
+    case "cursor_down":
       moveSelection(sidebar, 1);
       return { type: "handled" };
 
-    case "enter":
+    case "nav_up":
+    case "cursor_up":
+      moveSelection(sidebar, -1);
+      return { type: "handled" };
+
+    case "nav_select":
+    case "submit":
       if (sidebar.conversations.length > 0) {
         return { type: "select", convId: sidebar.conversations[sidebar.selectedIndex].id };
       }
       return { type: "handled" };
+
+    case "focus_prompt":
+      // i/a — let parent handle focus switch
+      return { type: "unhandled" };
 
     default:
       return { type: "handled" };
