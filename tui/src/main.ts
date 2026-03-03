@@ -13,24 +13,23 @@ import { parseKeys, type KeyEvent } from "./input";
 import { handleFocusedKey } from "./focus";
 import { clearPrompt } from "./promptline";
 import { tryCommand } from "./commands";
-import { render, enter_alt, leave_alt, hide_cursor, show_cursor } from "./render";
+import { render } from "./render";
+import { enter_alt, leave_alt, hide_cursor, show_cursor } from "./terminal";
 import { createInitialState, isStreaming } from "./state";
-import { createPendingAI, ensureCurrentBlock } from "./messages";
-import { updateConversationList, updateConversation } from "./sidebar";
+import { createPendingAI } from "./messages";
+import { handleEvent, type PendingSend, type ErrorBuffer } from "./events";
 import { theme } from "./theme";
 import type { Event } from "./protocol";
-import type { AIMessage } from "./messages";
 
 // ── State ───────────────────────────────────────────────────────────
 
 const state = createInitialState();
 let running = true;
 let daemon: DaemonClient;
-let pendingSendAfterCreate = false;
-let pendingMessageText = "";
+const pendingSend: PendingSend = { active: false, text: "" };
+const errorBuffer: ErrorBuffer = { errors: [] };
 let renderTimer: ReturnType<typeof setTimeout> | null = null;
 let streamTickTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingErrors: string[] = [];
 
 // ── Render scheduling ───────────────────────────────────────────────
 
@@ -54,179 +53,12 @@ function resetStreamTick(): void {
 
 // ── Event handler (daemon → TUI) ───────────────────────────────────
 
-function handleEvent(event: Event): void {
-  switch (event.type) {
-    case "conversation_created": {
-      state.convId = event.convId;
-      state.model = event.model;
-      daemon.subscribe(event.convId);
+function onDaemonEvent(event: Event): void {
+  handleEvent(event, state, daemon, pendingSend, errorBuffer);
 
-      // If we had a pending message, send it now
-      // (the message was already added to state.messages by handleSubmit)
-      if (pendingSendAfterCreate && pendingMessageText && state.pendingAI) {
-        daemon.sendMessage(event.convId, pendingMessageText, state.pendingAI.metadata.startedAt);
-        pendingMessageText = "";
-        pendingSendAfterCreate = false;
-      }
-      break;
-    }
-
-    case "streaming_started": {
-      state.scrollOffset = 0;
-      break;
-    }
-
-    case "block_start": {
-      if (state.pendingAI) {
-        state.pendingAI.blocks.push({ type: event.blockType, text: "" });
-      }
-      break;
-    }
-
-    case "text_chunk": {
-      if (state.pendingAI) {
-        const block = ensureCurrentBlock(state.pendingAI, "text");
-        if (block.type === "text") block.text += event.text;
-      }
-      state.scrollOffset = 0;
-      break;
-    }
-
-    case "thinking_chunk": {
-      if (state.pendingAI) {
-        const block = ensureCurrentBlock(state.pendingAI, "thinking");
-        if (block.type === "thinking") block.text += event.text;
-      }
-      break;
-    }
-
-    case "tool_call": {
-      if (state.pendingAI) {
-        state.pendingAI.blocks.push({
-          type: "tool_call",
-          toolCallId: event.toolCallId,
-          toolName: event.toolName,
-          input: event.input,
-          summary: event.summary,
-        });
-      }
-      break;
-    }
-
-    case "tool_result": {
-      if (state.pendingAI) {
-        state.pendingAI.blocks.push({
-          type: "tool_result",
-          toolCallId: event.toolCallId,
-          toolName: event.toolName,
-          output: event.output,
-          isError: event.isError,
-        });
-      }
-      break;
-    }
-
-    case "tokens_update": {
-      if (state.pendingAI) {
-        state.pendingAI.metadata.tokens = event.tokens;
-      }
-      break;
-    }
-
-    case "context_update": {
-      state.contextTokens = event.contextTokens;
-      break;
-    }
-
-    case "message_complete": {
-      if (state.pendingAI) {
-        state.pendingAI.metadata.endedAt = event.endedAt;
-        state.messages.push(state.pendingAI);
-        state.pendingAI = null;
-      }
-      break;
-    }
-
-    case "streaming_stopped": {
-      // If pendingAI wasn't finalized (e.g. error/abort), push what we have
-      const wasInterrupted = state.pendingAI !== null;
-      if (state.pendingAI && state.pendingAI.blocks.length > 0) {
-        state.pendingAI.metadata.endedAt ??= Date.now();
-        state.messages.push(state.pendingAI);
-      }
-      state.pendingAI = null;
-
-      // Flush errors that arrived during streaming (after the AI message)
-      for (const msg of pendingErrors) {
-        state.messages.push({ role: "system", text: `✗ ${msg}`, color: theme.error, metadata: null });
-      }
-      pendingErrors = [];
-
-      if (wasInterrupted) {
-        state.messages.push({ role: "system", text: "✗ Interrupted", color: theme.error, metadata: null });
-      }
-      if (streamTickTimer) { clearTimeout(streamTickTimer); streamTickTimer = null; }
-      break;
-    }
-
-    case "error": {
-      if (isStreaming(state)) {
-        pendingErrors.push(event.message);
-      } else {
-        state.messages.push({ role: "system", text: `✗ ${event.message}`, color: theme.error, metadata: null });
-      }
-      break;
-    }
-
-    case "usage_update": {
-      state.usage = event.usage;
-      break;
-    }
-
-    case "conversations_list": {
-      updateConversationList(state.sidebar, event.conversations);
-      break;
-    }
-
-    case "conversation_updated": {
-      updateConversation(state.sidebar, event.summary);
-      break;
-    }
-
-    case "conversation_loaded": {
-      // Rebuild display messages from the loaded conversation
-      state.messages = [];
-      state.pendingAI = null;
-      state.convId = event.convId;
-      state.model = event.model;
-      state.scrollOffset = 0;
-
-      // Interleave user messages and AI block arrays
-      let userIdx = 0;
-      let aiIdx = 0;
-      // Conversations alternate: user, assistant, user, assistant...
-      const totalPairs = Math.max(event.userMessages.length, event.messages.length);
-      for (let i = 0; i < totalPairs; i++) {
-        if (userIdx < event.userMessages.length) {
-          state.messages.push({ role: "user", text: event.userMessages[userIdx], metadata: null });
-          userIdx++;
-        }
-        if (aiIdx < event.messages.length) {
-          const aiMsg: AIMessage = {
-            role: "assistant",
-            blocks: event.messages[aiIdx],
-            metadata: { startedAt: 0, endedAt: 0, model: event.model, tokens: 0 },
-          };
-          state.messages.push(aiMsg);
-          aiIdx++;
-        }
-      }
-      break;
-    }
-
-    case "ack":
-    case "pong":
-      break;
+  // Clear stream tick on streaming_stopped
+  if (event.type === "streaming_stopped") {
+    if (streamTickTimer) { clearTimeout(streamTickTimer); streamTickTimer = null; }
   }
 
   scheduleRender();
@@ -263,8 +95,8 @@ function handleSubmit(): void {
 
   // If no conversation yet, create one first
   if (!state.convId) {
-    pendingSendAfterCreate = true;
-    pendingMessageText = text;
+    pendingSend.active = true;
+    pendingSend.text = text;
     daemon.createConversation(state.model);
   } else {
     daemon.sendMessage(state.convId, text, startedAt);
@@ -312,7 +144,7 @@ function restoreTerminal(): void {
 // ── Main ────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  daemon = new DaemonClient(handleEvent);
+  daemon = new DaemonClient(onDaemonEvent);
   try {
     await daemon.connect();
   } catch (err) {

@@ -1,8 +1,9 @@
 /**
- * Terminal rendering for the Exocortex TUI.
+ * Layout composition for the Exocortex TUI.
  *
- * Draws the UI: header, messages (with blocks), and input prompt.
- * Uses ANSI escape codes for cursor positioning and colors.
+ * Positions all UI components: topbar, sidebar, message area,
+ * prompt line, and status line. Each component renders itself —
+ * this file only composes them into screen coordinates.
  */
 
 import { isStreaming, type RenderState } from "./state";
@@ -10,123 +11,15 @@ import { renderStatusLine, statusLineHeight } from "./statusline";
 import { renderTopbar } from "./topbar";
 import { renderSidebar, SIDEBAR_WIDTH } from "./sidebar";
 import { buildMessageLines } from "./conversation";
+import { getInputLines } from "./promptline";
+import { show_cursor } from "./terminal";
 import { theme } from "./theme";
 
-// ── ANSI helpers (non-color escapes — not theme-dependent) ──────────
+// ── ANSI positioning (non-color escapes) ────────────────────────────
 
 const ESC = "\x1b[";
-
-export const hide_cursor = `${ESC}?25l`;
-export const show_cursor = `${ESC}?25h`;
-export const enter_alt = `${ESC}?1049h`;
-export const leave_alt = `${ESC}?1049l`;
-export const clear_screen = `${ESC}2J${ESC}H`;
 const clear_line = `${ESC}2K`;
 const move_to = (row: number, col: number) => `${ESC}${row};${col}H`;
-
-// ── Input line wrapping (vim-style hard wrap) ───────────────────────
-
-interface InputLinesResult {
-  /** Visible lines after wrapping + scroll. */
-  lines: string[];
-  /** true if this wrapped line starts a new buffer line (after a \n). */
-  isNewLine: boolean[];
-  /** Cursor row within the visible lines. */
-  cursorLine: number;
-  /** Cursor column within its visible line. */
-  cursorCol: number;
-}
-
-/**
- * Split the input buffer into display lines with hard-wrapping.
- * Long lines are broken at maxWidth (vim-style, no word boundaries).
- * Returns the visible slice (scrolled to keep cursor in view)
- * plus cursor position within that slice.
- */
-function getInputLines(
-  buffer: string,
-  cursorPos: number,
-  maxWidth: number,
-  maxRows: number,
-): InputLinesResult {
-  const bufferLines = buffer.split("\n");
-  const wrapped: string[] = [];
-  const isNewLineArr: boolean[] = [];
-
-  // Track which wrapped line the cursor falls on
-  let cursorWrappedLine = 0;
-  let cursorColInLine = 0;
-  let bufOffset = 0;
-
-  for (let li = 0; li < bufferLines.length; li++) {
-    const line = bufferLines[li];
-
-    if (line.length <= maxWidth) {
-      // Cursor within this line?
-      if (cursorPos >= bufOffset && cursorPos <= bufOffset + line.length) {
-        cursorWrappedLine = wrapped.length;
-        cursorColInLine = cursorPos - bufOffset;
-      }
-      wrapped.push(line);
-      isNewLineArr.push(li > 0);
-    } else {
-      // Hard-wrap into chunks of maxWidth
-      for (let i = 0; i < line.length; i += maxWidth) {
-        const chunk = line.slice(i, i + maxWidth);
-        // Cursor within this chunk?
-        const chunkStart = bufOffset + i;
-        const chunkEnd = chunkStart + chunk.length;
-        if (cursorPos >= chunkStart && cursorPos <= chunkEnd) {
-          cursorWrappedLine = wrapped.length;
-          cursorColInLine = cursorPos - chunkStart;
-        }
-        wrapped.push(chunk);
-        isNewLineArr.push(li > 0 && i === 0);
-      }
-    }
-
-    bufOffset += line.length + 1; // +1 for the \n
-  }
-
-  // Ensure at least one line
-  if (wrapped.length === 0) {
-    wrapped.push("");
-    isNewLineArr.push(false);
-  }
-
-  // Cursor at the right edge of a full-width line → drop to col 0 of next line
-  if (cursorColInLine >= maxWidth) {
-    cursorWrappedLine++;
-    cursorColInLine = 0;
-    // If there's no next line yet, insert an empty continuation line
-    if (cursorWrappedLine >= wrapped.length) {
-      wrapped.splice(cursorWrappedLine, 0, "");
-      isNewLineArr.splice(cursorWrappedLine, 0, false);
-    }
-  }
-
-  // Scroll to keep cursor visible
-  if (wrapped.length <= maxRows) {
-    return {
-      lines: wrapped,
-      isNewLine: isNewLineArr,
-      cursorLine: cursorWrappedLine,
-      cursorCol: cursorColInLine,
-    };
-  }
-
-  // Cursor-following scroll
-  let scrollStart = Math.max(0, cursorWrappedLine - maxRows + 1);
-  // Don't scroll past the end
-  scrollStart = Math.min(scrollStart, wrapped.length - maxRows);
-
-  return {
-    lines: wrapped.slice(scrollStart, scrollStart + maxRows),
-    isNewLine: isNewLineArr.slice(scrollStart, scrollStart + maxRows),
-    cursorLine: cursorWrappedLine - scrollStart,
-    cursorCol: cursorColInLine,
-  };
-}
 
 // ── Main render ─────────────────────────────────────────────────────
 
