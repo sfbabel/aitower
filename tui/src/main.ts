@@ -67,7 +67,10 @@ function handleEvent(event: Event): void {
     case "streaming_started": {
       state.streaming = true;
       state.scrollOffset = 0;
-      state.pendingAI = createPendingAI(event.startedAt);
+      // pendingAI already created in handleSubmit — don't overwrite
+      if (!state.pendingAI) {
+        state.pendingAI = createPendingAI(event.startedAt);
+      }
       break;
     }
 
@@ -205,19 +208,20 @@ function handleSubmit(): void {
     return;
   }
 
+  // Create the AI message immediately so the timer starts now
+  state.messages.push({ role: "user", text });
+  state.pendingAI = createPendingAI(Date.now());
+  state.streaming = true;
+
   // If no conversation yet, create one first
   if (!state.convId) {
     pendingSendAfterCreate = true;
     pendingMessageText = text;
-    state.messages.push({ role: "user", text });
     daemon.createConversation(state.model);
-    scheduleRender();
-    return;
+  } else {
+    daemon.sendMessage(state.convId, text);
   }
 
-  // Send to daemon
-  state.messages.push({ role: "user", text });
-  daemon.sendMessage(state.convId, text);
   scheduleRender();
 }
 

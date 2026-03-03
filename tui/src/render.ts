@@ -146,12 +146,6 @@ function renderAIMessage(
 ): string[] {
   const lines: string[] = [];
 
-  // Empty pending message → "thinking..."
-  if (msg.blocks.length === 0 && isStreaming) {
-    lines.push(`  ${DIM}thinking...${RESET}`);
-    return lines;
-  }
-
   // Render each block
   for (const block of msg.blocks) {
     lines.push(...renderBlock(block, contentWidth));
