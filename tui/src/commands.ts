@@ -35,7 +35,7 @@ const commands: SlashCommand[] = [
     handler: (_text, state) => {
       const lines = commands
         .filter(c => c.name !== "/exit")
-        .map(c => `  ${c.name}  ${c.description}`);
+        .map(c => `${c.name}  ${c.description}`);
       state.messages.push({ role: "system", text: lines.join("\n"), metadata: null });
       clearPrompt(state);
       return { type: "handled" };
