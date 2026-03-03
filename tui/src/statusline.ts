@@ -12,8 +12,8 @@ import type { UsageData, UsageWindow } from "./messages";
 
 const ESC = "\x1b[";
 const RESET = `${ESC}0m`;
-const DIM = `${ESC}2m`;
-const FG_ACCENT = `${ESC}38;2;29;154;239m`;  // #1d9aef
+const FG_DIM = `${ESC}38;2;100;100;100m`;     // #646464
+const FG_ACCENT = `${ESC}38;2;29;155;240m`;   // #1d9bf0
 const FG_WHITE = `${ESC}37m`;
 
 // ── Formatting ──────────────────────────────────────────────────────
@@ -22,12 +22,12 @@ const BAR_WIDTH = 20;
 
 function renderBar(pct: number | null): string {
   if (pct === null) {
-    return DIM + "\u2591".repeat(BAR_WIDTH);
+    return FG_DIM + "\u2591".repeat(BAR_WIDTH);
   }
   const clamped = Math.max(0, Math.min(100, pct));
   const filled = Math.round((clamped / 100) * BAR_WIDTH);
   const empty = BAR_WIDTH - filled;
-  return FG_ACCENT + "\u2588".repeat(filled) + DIM + "\u2591".repeat(empty);
+  return FG_ACCENT + "\u2588".repeat(filled) + FG_DIM + "\u2591".repeat(empty);
 }
 
 function formatTimeUntil(resetMs: number | null, now: number): string {
@@ -52,7 +52,7 @@ function renderWindowLine(label: string, window: UsageWindow | null, now: number
   const pctStr = pct !== null ? `${pct}%` : "?%";
   const resetStr = formatTimeUntil(window?.resetsAt ?? null, now);
   const bar = renderBar(pct);
-  return `${DIM}${label}: ${FG_WHITE}[${bar}${FG_WHITE}]${DIM} ${FG_ACCENT}${pctStr}${DIM} resets in ${FG_ACCENT}${resetStr}${RESET}`;
+  return `${FG_DIM}  ${label}: ${FG_WHITE}[${bar}${FG_WHITE}] ${FG_ACCENT}${pctStr}${FG_DIM} resets in ${FG_ACCENT}${resetStr}${RESET}`;
 }
 
 // ── Public renderer ─────────────────────────────────────────────────
