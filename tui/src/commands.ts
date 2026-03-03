@@ -30,6 +30,18 @@ const MODELS: ModelId[] = ["sonnet", "haiku", "opus"];
 
 const commands: SlashCommand[] = [
   {
+    name: "/help",
+    description: "Show available commands",
+    handler: (_text, state) => {
+      const lines = commands
+        .filter(c => c.name !== "/exit")
+        .map(c => `  ${c.name}  ${c.description}`);
+      state.messages.push({ role: "system", text: lines.join("\n"), metadata: null });
+      clearPrompt(state);
+      return { type: "handled" };
+    },
+  },
+  {
     name: "/quit",
     description: "Exit Exocortex",
     handler: () => ({ type: "quit" }),
