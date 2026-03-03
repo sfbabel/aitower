@@ -1,0 +1,205 @@
+/**
+ * Terminal rendering for the Exocortex TUI.
+ *
+ * Draws the UI: header, messages, streaming indicator, and input prompt.
+ * Uses ANSI escape codes for cursor positioning and colors.
+ */
+
+import type { ModelId } from "./protocol";
+
+// ── ANSI helpers ────────────────────────────────────────────────────
+
+const ESC = "\x1b[";
+const RESET = `${ESC}0m`;
+const BOLD = `${ESC}1m`;
+const DIM = `${ESC}2m`;
+const ITALIC = `${ESC}3m`;
+const CYAN = `${ESC}36m`;
+const GREEN = `${ESC}32m`;
+const YELLOW = `${ESC}33m`;
+const RED = `${ESC}31m`;
+const BLUE = `${ESC}34m`;
+const MAGENTA = `${ESC}35m`;
+const BG_DARK = `${ESC}48;5;236m`;
+
+export const hide_cursor = `${ESC}?25l`;
+export const show_cursor = `${ESC}?25h`;
+export const enter_alt = `${ESC}?1049h`;
+export const leave_alt = `${ESC}?1049l`;
+export const clear_screen = `${ESC}2J${ESC}H`;
+const clear_line = `${ESC}2K`;
+const move_to = (row: number, col: number) => `${ESC}${row};${col}H`;
+
+// ── Types ───────────────────────────────────────────────────────────
+
+export interface DisplayMessage {
+  role: "user" | "assistant" | "system";
+  text: string;
+  durationMs?: number;
+}
+
+export interface RenderState {
+  messages: DisplayMessage[];
+  streamingText: string;
+  streaming: boolean;
+  streamStartedAt: number | null;
+  model: ModelId;
+  convId: string | null;
+  inputBuffer: string;
+  cursorPos: number;
+  cols: number;
+  rows: number;
+  scrollOffset: number;
+}
+
+// ── Word wrapping ───────────────────────────────────────────────────
+
+function wordWrap(text: string, width: number): string[] {
+  if (width <= 0) return [text];
+  const result: string[] = [];
+
+  for (const rawLine of text.split("\n")) {
+    if (rawLine.length <= width) {
+      result.push(rawLine);
+      continue;
+    }
+    let line = rawLine;
+    while (line.length > width) {
+      let breakAt = line.lastIndexOf(" ", width);
+      if (breakAt <= 0) breakAt = width;
+      result.push(line.slice(0, breakAt));
+      line = line.slice(breakAt).trimStart();
+    }
+    if (line) result.push(line);
+  }
+
+  return result;
+}
+
+// ── Build display lines ─────────────────────────────────────────────
+
+function formatDuration(ms: number): string {
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const m = Math.floor(ms / 60_000);
+  const s = Math.round((ms % 60_000) / 1000);
+  return `${m}m ${s}s`;
+}
+
+function buildMessageLines(state: RenderState): string[] {
+  const contentWidth = state.cols - 4; // 2 char indent + 2 char margin
+  const lines: string[] = [];
+
+  for (const msg of state.messages) {
+    lines.push(""); // blank line before each message
+
+    if (msg.role === "user") {
+      lines.push(`${BOLD}${CYAN}  ▌You${RESET}`);
+      for (const wl of wordWrap(msg.text, contentWidth)) {
+        lines.push(`  ${wl}`);
+      }
+    } else if (msg.role === "assistant") {
+      const dur = msg.durationMs ? `${DIM} · ${formatDuration(msg.durationMs)}${RESET}` : "";
+      lines.push(`${BOLD}${GREEN}  ▌Claude${RESET}${dur}`);
+      for (const wl of wordWrap(msg.text, contentWidth)) {
+        lines.push(`  ${wl}`);
+      }
+    } else {
+      lines.push(`  ${DIM}${msg.text}${RESET}`);
+    }
+  }
+
+  // Streaming in progress
+  if (state.streaming) {
+    const elapsed = state.streamStartedAt ? Date.now() - state.streamStartedAt : 0;
+    const dur = elapsed > 0 ? `${DIM} · ${formatDuration(elapsed)}${RESET}` : "";
+
+    if (!state.streamingText) {
+      // Waiting for first chunk
+      lines.push("");
+      lines.push(`${BOLD}${GREEN}  ▌Claude${RESET}${dur}`);
+      lines.push(`  ${DIM}thinking...${RESET}`);
+    } else {
+      lines.push("");
+      lines.push(`${BOLD}${GREEN}  ▌Claude${RESET}${dur}`);
+      for (const wl of wordWrap(state.streamingText, contentWidth)) {
+        lines.push(`  ${wl}`);
+      }
+      lines.push(`  ${DIM}▍${RESET}`);
+    }
+  }
+
+  return lines;
+}
+
+// ── Main render ─────────────────────────────────────────────────────
+
+export function render(state: RenderState): void {
+  const { cols, rows } = state;
+  const out: string[] = [];
+
+  // ── Header (row 1) ────────────────────────────────────────────
+  const title = `${BOLD} Exocortex${RESET}`;
+  const modelLabel = `${DIM}${state.model}${RESET}`;
+  const convLabel = state.convId ? `${DIM}${state.convId.slice(0, 12)}${RESET}` : "";
+  const statusDot = state.streaming ? `${YELLOW}●${RESET}` : `${GREEN}●${RESET}`;
+
+  out.push(move_to(1, 1) + clear_line);
+  out.push(`${BG_DARK}${title}  ${statusDot}  ${convLabel}${" ".repeat(Math.max(0, cols - 30 - state.model.length))}${modelLabel} ${RESET}`);
+
+  // ── Separator after header ────────────────────────────────────
+  out.push(move_to(2, 1) + clear_line);
+  out.push(`${DIM}${"─".repeat(cols)}${RESET}`);
+
+  // ── Input area (bottom 2 rows) ────────────────────────────────
+  const inputRow = rows - 1;
+  const sepRow = rows - 2;
+
+  // Separator above input
+  out.push(move_to(sepRow, 1) + clear_line);
+  out.push(`${DIM}${"─".repeat(cols)}${RESET}`);
+
+  // Input line
+  const prompt = `${BOLD}${BLUE} ❯${RESET} `;
+  const promptLen = 3; // " ❯ " visible chars
+  const inputWidth = cols - promptLen;
+  // Show the portion of input around the cursor
+  let displayInput = state.inputBuffer;
+  let displayCursorPos = state.cursorPos;
+  if (displayInput.length > inputWidth) {
+    const start = Math.max(0, state.cursorPos - Math.floor(inputWidth / 2));
+    displayInput = displayInput.slice(start, start + inputWidth);
+    displayCursorPos = state.cursorPos - start;
+  }
+  out.push(move_to(inputRow, 1) + clear_line);
+  out.push(prompt + displayInput);
+
+  // ── Message area (rows 3 to sepRow-1) ─────────────────────────
+  const messageAreaStart = 3;
+  const messageAreaHeight = sepRow - messageAreaStart;
+  const allLines = buildMessageLines(state);
+
+  // Apply scroll: show the last `messageAreaHeight` lines by default
+  const totalLines = allLines.length;
+  let viewStart: number;
+
+  if (state.scrollOffset === 0) {
+    // Auto-scroll: show bottom
+    viewStart = Math.max(0, totalLines - messageAreaHeight);
+  } else {
+    viewStart = Math.max(0, totalLines - messageAreaHeight - state.scrollOffset);
+  }
+
+  for (let i = 0; i < messageAreaHeight; i++) {
+    out.push(move_to(messageAreaStart + i, 1) + clear_line);
+    const lineIdx = viewStart + i;
+    if (lineIdx < totalLines) {
+      out.push(allLines[lineIdx]);
+    }
+  }
+
+  // ── Position cursor in input field ────────────────────────────
+  out.push(move_to(inputRow, promptLen + displayCursorPos + 1));
+  out.push(show_cursor);
+
+  process.stdout.write(out.join(""));
+}

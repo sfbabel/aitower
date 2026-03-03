@@ -1,0 +1,315 @@
+/**
+ * OAuth authentication for exocortexd.
+ *
+ * Handles the full PKCE login flow against claude.ai/platform.claude.com,
+ * token refresh, and profile fetching.
+ */
+
+import { createServer, type Server, type IncomingMessage, type ServerResponse } from "http";
+import { randomBytes, createHash } from "crypto";
+import { log } from "./log";
+import type { StoredTokens, OAuthProfile } from "./store";
+
+// ── Constants (matching Claude Code) ────────────────────────────────
+
+const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
+const BASE_API_URL = "https://api.anthropic.com";
+const CLAUDEAI_AUTHORIZE_URL = "https://claude.ai/oauth/authorize";
+const TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
+const SUCCESS_URL = "https://platform.claude.com/oauth/code/success?app=claude-code";
+
+const CLAUDE_AI_SCOPES = [
+  "user:profile",
+  "user:inference",
+  "user:sessions:claude_code",
+  "user:mcp_servers",
+];
+
+// ── PKCE ────────────────────────────────────────────────────────────
+
+function base64url(buffer: Buffer): string {
+  return buffer.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+function generateCodeVerifier(length = 64): string {
+  return base64url(randomBytes(length)).slice(0, length);
+}
+
+function generateCodeChallenge(verifier: string): string {
+  return base64url(createHash("sha256").update(verifier).digest());
+}
+
+function generateState(): string {
+  return base64url(randomBytes(32));
+}
+
+// ── Auth errors ─────────────────────────────────────────────────────
+
+export class AuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AuthError";
+  }
+}
+
+// ── OAuth callback server ───────────────────────────────────────────
+
+interface CallbackResult {
+  code: string;
+  state: string;
+}
+
+async function startCallbackServer(
+  expectedState: string,
+): Promise<{ port: number; waitForCallback: () => Promise<CallbackResult>; shutdown: () => void }> {
+  const server = createServer();
+  let resolveCallback: ((r: CallbackResult) => void) | null = null;
+  let rejectCallback: ((e: Error) => void) | null = null;
+
+  // Find available port
+  let port = 0;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const candidate = 39152 + Math.floor(Math.random() * 10000);
+    const ok = await new Promise<boolean>((resolve) => {
+      server.once("error", () => resolve(false));
+      server.listen(candidate, "127.0.0.1", () => resolve(true));
+    });
+    if (ok) { port = candidate; break; }
+  }
+  if (port === 0) throw new Error("Could not find available port for OAuth callback");
+
+  server.on("request", (req: IncomingMessage, res: ServerResponse) => {
+    const url = new URL(req.url || "/", `http://127.0.0.1:${port}`);
+    if (url.pathname !== "/callback") {
+      res.writeHead(404); res.end("Not found"); return;
+    }
+
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const error = url.searchParams.get("error");
+
+    if (error) {
+      res.writeHead(400); res.end(`Auth failed: ${error}`);
+      rejectCallback?.(new Error(`OAuth error: ${error}`));
+      return;
+    }
+    if (!code || !state || state !== expectedState) {
+      res.writeHead(400); res.end("Invalid callback");
+      rejectCallback?.(new Error("OAuth state mismatch"));
+      return;
+    }
+
+    res.writeHead(302, { Location: SUCCESS_URL });
+    res.end();
+    resolveCallback?.({ code, state });
+  });
+
+  const waitForCallback = (): Promise<CallbackResult> =>
+    new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("OAuth callback timed out")), 300_000);
+      resolveCallback = (r) => { clearTimeout(timer); resolve(r); };
+      rejectCallback = (e) => { clearTimeout(timer); reject(e); };
+    });
+
+  return { port, waitForCallback, shutdown: () => server.close() };
+}
+
+// ── Token exchange ──────────────────────────────────────────────────
+
+interface TokenResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  scope: string;
+}
+
+async function exchangeCode(
+  code: string, codeVerifier: string, state: string, redirectUri: string,
+): Promise<TokenResponse> {
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      grant_type: "authorization_code",
+      code, redirect_uri: redirectUri, client_id: CLIENT_ID, code_verifier: codeVerifier, state,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Token exchange failed (${res.status}): ${text}`);
+  }
+  return res.json() as Promise<TokenResponse>;
+}
+
+// ── Profile fetching ────────────────────────────────────────────────
+
+interface ProfileResponse {
+  account: { uuid: string; email: string; display_name: string | null };
+  organization: {
+    uuid: string; name: string; organization_type: string;
+    rate_limit_tier: string; billing_type: string;
+  };
+}
+
+interface RolesResponse {
+  organization_role: string | null;
+  workspace_role: string | null;
+}
+
+async function fetchProfile(accessToken: string): Promise<ProfileResponse | null> {
+  try {
+    const res = await fetch(`${BASE_API_URL}/api/oauth/profile`, {
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    });
+    return res.ok ? (res.json() as Promise<ProfileResponse>) : null;
+  } catch { return null; }
+}
+
+async function fetchRoles(accessToken: string): Promise<RolesResponse | null> {
+  try {
+    const res = await fetch(`${BASE_API_URL}/api/oauth/claude_cli/roles`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return res.ok ? (res.json() as Promise<RolesResponse>) : null;
+  } catch { return null; }
+}
+
+function mapSubscription(orgType: string | null | undefined): string | null {
+  switch (orgType) {
+    case "claude_max": return "max";
+    case "claude_pro": return "pro";
+    case "claude_enterprise": return "enterprise";
+    case "claude_team": return "team";
+    default: return null;
+  }
+}
+
+// ── Token refresh ───────────────────────────────────────────────────
+
+let inflightRefresh: Promise<StoredTokens> | null = null;
+
+export async function refreshTokens(refreshToken: string): Promise<StoredTokens> {
+  if (inflightRefresh) return inflightRefresh;
+  inflightRefresh = doRefresh(refreshToken).finally(() => { inflightRefresh = null; });
+  return inflightRefresh;
+}
+
+async function doRefresh(refreshToken: string): Promise<StoredTokens> {
+  log("info", "auth: refreshing tokens");
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: CLIENT_ID,
+      scope: CLAUDE_AI_SCOPES.join(" "),
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    if (res.status === 400 && text.includes("invalid_grant")) {
+      throw new AuthError(`Session expired — use login to re-authenticate. (${text})`);
+    }
+    throw new Error(`Token refresh failed (${res.status}): ${text}`);
+  }
+
+  const data = (await res.json()) as TokenResponse;
+  const profile = await fetchProfile(data.access_token);
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? refreshToken,
+    expiresAt: Date.now() + data.expires_in * 1000,
+    scopes: data.scope?.split(" ") ?? CLAUDE_AI_SCOPES,
+    subscriptionType: mapSubscription(profile?.organization?.organization_type),
+    rateLimitTier: profile?.organization?.rate_limit_tier ?? null,
+  };
+}
+
+// ── Verify token ────────────────────────────────────────────────────
+
+export async function verifyAuth(accessToken: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_API_URL}/api/oauth/claude_cli/client_data`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "anthropic-beta": "oauth-2025-04-20",
+        "Content-Type": "application/json",
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+// ── Full login flow ─────────────────────────────────────────────────
+
+export interface LoginResult {
+  tokens: StoredTokens;
+  profile: OAuthProfile | null;
+}
+
+export async function login(onProgress?: (msg: string) => void): Promise<LoginResult> {
+  const say = onProgress ?? console.log;
+
+  const codeVerifier = generateCodeVerifier();
+  const codeChallenge = generateCodeChallenge(codeVerifier);
+  const state = generateState();
+  const { port, waitForCallback, shutdown } = await startCallbackServer(state);
+  const redirectUri = `http://localhost:${port}/callback`;
+
+  try {
+    const url = new URL(CLAUDEAI_AUTHORIZE_URL);
+    url.searchParams.set("code", "true");
+    url.searchParams.set("client_id", CLIENT_ID);
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("redirect_uri", redirectUri);
+    url.searchParams.set("scope", CLAUDE_AI_SCOPES.join(" "));
+    url.searchParams.set("code_challenge", codeChallenge);
+    url.searchParams.set("code_challenge_method", "S256");
+    url.searchParams.set("state", state);
+
+    say("Opening browser for authentication...");
+    say(`If the browser doesn't open, visit:\n${url.toString()}`);
+
+    Bun.spawn(["xdg-open", url.toString()], { stdout: "ignore", stderr: "ignore" }).unref();
+
+    say("Waiting for authentication...");
+    const callback = await waitForCallback();
+
+    say("Exchanging authorization code...");
+    const tokenResponse = await exchangeCode(callback.code, codeVerifier, callback.state, redirectUri);
+
+    say("Fetching profile...");
+    const [profileData, rolesData] = await Promise.all([
+      fetchProfile(tokenResponse.access_token),
+      fetchRoles(tokenResponse.access_token),
+    ]);
+
+    const tokens: StoredTokens = {
+      accessToken: tokenResponse.access_token,
+      refreshToken: tokenResponse.refresh_token,
+      expiresAt: Date.now() + tokenResponse.expires_in * 1000,
+      scopes: tokenResponse.scope.split(" "),
+      subscriptionType: mapSubscription(profileData?.organization?.organization_type),
+      rateLimitTier: profileData?.organization?.rate_limit_tier ?? null,
+    };
+
+    const profile: OAuthProfile | null = profileData ? {
+      accountUuid: profileData.account.uuid,
+      email: profileData.account.email,
+      displayName: profileData.account.display_name,
+      organizationUuid: profileData.organization?.uuid ?? null,
+      organizationName: profileData.organization?.name ?? null,
+      organizationType: profileData.organization?.organization_type ?? null,
+      organizationRole: rolesData?.organization_role ?? null,
+      workspaceRole: rolesData?.workspace_role ?? null,
+    } : null;
+
+    return { tokens, profile };
+  } finally {
+    shutdown();
+  }
+}
