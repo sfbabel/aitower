@@ -180,7 +180,7 @@ export function renderSidebar(
     const padding = Math.max(0, innerWidth - plainLen);
 
     rows.push(
-      bg + fg +
+      theme.reset + bg + fg +
       prefix + titleText + " ".repeat(padding) +
       theme.reset + borderFg + "│" + theme.reset,
     );
