@@ -11,9 +11,10 @@
 import { DaemonClient } from "./client";
 import { parseKeys, type KeyEvent } from "./input";
 import { handlePromptKey, clearPrompt } from "./promptline";
+import { tryCommand } from "./commands";
 import { render, enter_alt, leave_alt, hide_cursor, show_cursor } from "./render";
 import { createInitialState, isStreaming } from "./state";
-import { createPendingAI, ensureCurrentBlock, type ModelId } from "./messages";
+import { createPendingAI, ensureCurrentBlock } from "./messages";
 import { theme } from "./theme";
 import type { Event } from "./protocol";
 
@@ -188,31 +189,10 @@ function handleSubmit(): void {
   const text = state.inputBuffer.trim();
   if (!text) return;
 
-  // Commands
-  if (text === "/quit" || text === "/exit") {
-    running = false;
-    return;
-  }
-
-  if (text === "/new") {
-    state.messages = [];
-    state.convId = null;
-    state.pendingAI = null;
-    clearPrompt(state);
-    state.scrollOffset = 0;
-    scheduleRender();
-    return;
-  }
-
-  if (text.startsWith("/model")) {
-    const parts = text.split(/\s+/);
-    if (parts[1] && ["sonnet", "haiku", "opus"].includes(parts[1])) {
-      state.model = parts[1] as ModelId;
-      state.messages.push({ role: "system", text: `Model set to ${state.model}`, metadata: null });
-    } else {
-      state.messages.push({ role: "system", text: `Current: ${state.model}. Available: sonnet, haiku, opus`, metadata: null });
-    }
-    clearPrompt(state);
+  // Slash commands
+  const cmdResult = tryCommand(text, state);
+  if (cmdResult) {
+    if (cmdResult.type === "quit") { running = false; return; }
     scheduleRender();
     return;
   }

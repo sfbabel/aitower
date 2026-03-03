@@ -1,0 +1,91 @@
+/**
+ * Slash command registry.
+ *
+ * Defines all user-facing slash commands. Each command has a name,
+ * description, and handler. The handler receives the full input text
+ * and state, and returns a result indicating what happened.
+ *
+ * This is the only file that knows what slash commands exist.
+ */
+
+import type { RenderState } from "./state";
+import { clearPrompt } from "./promptline";
+import type { ModelId } from "./messages";
+
+// ── Types ───────────────────────────────────────────────────────────
+
+export type CommandResult =
+  | { type: "handled" }
+  | { type: "quit" };
+
+export interface SlashCommand {
+  name: string;
+  description: string;
+  handler: (text: string, state: RenderState) => CommandResult;
+}
+
+// ── Command definitions ─────────────────────────────────────────────
+
+const MODELS: ModelId[] = ["sonnet", "haiku", "opus"];
+
+const commands: SlashCommand[] = [
+  {
+    name: "/quit",
+    description: "Exit Exocortex",
+    handler: () => ({ type: "quit" }),
+  },
+  {
+    name: "/exit",
+    description: "Exit Exocortex",
+    handler: () => ({ type: "quit" }),
+  },
+  {
+    name: "/new",
+    description: "Start a new conversation",
+    handler: (_text, state) => {
+      state.messages = [];
+      state.convId = null;
+      state.pendingAI = null;
+      clearPrompt(state);
+      state.scrollOffset = 0;
+      return { type: "handled" };
+    },
+  },
+  {
+    name: "/model",
+    description: "Set or show the current model",
+    handler: (text, state) => {
+      const parts = text.split(/\s+/);
+      const arg = parts[1];
+      if (arg && MODELS.includes(arg as ModelId)) {
+        state.model = arg as ModelId;
+        state.messages.push({ role: "system", text: `Model set to ${state.model}`, metadata: null });
+      } else {
+        state.messages.push({ role: "system", text: `Current: ${state.model}. Available: ${MODELS.join(", ")}`, metadata: null });
+      }
+      clearPrompt(state);
+      return { type: "handled" };
+    },
+  },
+];
+
+// ── Lookup ──────────────────────────────────────────────────────────
+
+/**
+ * Try to match and execute a slash command.
+ * Returns the command result, or null if the input is not a command.
+ */
+export function tryCommand(text: string, state: RenderState): CommandResult | null {
+  if (!text.startsWith("/")) return null;
+
+  const name = text.split(/\s+/)[0];
+  const cmd = commands.find(c => c.name === name);
+  if (!cmd) return null;
+
+  return cmd.handler(text, state);
+}
+
+/** List all registered commands (for /help, autocomplete, etc). */
+export function listCommands(): readonly SlashCommand[] {
+  return commands;
+}
