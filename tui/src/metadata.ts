@@ -42,6 +42,6 @@ export function renderMetadata(metadata: MessageMetadata | null): string[] {
   const elapsed = (metadata.endedAt ?? Date.now()) - metadata.startedAt;
   parts.push(formatDuration(elapsed));
 
-  const line = parts.join(" · ");
+  const line = parts.join(" | ");
   return [`  ${theme.dim}${line}${theme.reset}`];
 }
