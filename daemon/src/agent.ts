@@ -63,21 +63,14 @@ export interface AgentResult {
   durationMs: number;
 }
 
-// ── Tool summary ────────────────────────────────────────────────────
+// ── Tool summarizer ─────────────────────────────────────────────────
 
-/** Human-readable one-liner for a tool call. Expand as tools are added. */
-export function toolSummary(tc: ApiToolCall): string {
-  switch (tc.name) {
-    case "bash":      return (tc.input.command as string)?.slice(0, 120) ?? "";
-    case "read":
-    case "edit":
-    case "write":     return (tc.input.file_path as string) ?? "";
-    case "glob":      return (tc.input.pattern as string) ?? "";
-    case "grep":      return `/${tc.input.pattern as string}/`;
-    case "browse":    return (tc.input.url as string) ?? "";
-    case "websearch": return (tc.input.query as string) ?? "";
-    default:          return tc.name;
-  }
+/** Injected function that produces a display summary for a tool call. */
+export type ToolSummarizer = (name: string, input: Record<string, unknown>) => string;
+
+/** Fallback if no summarizer is provided. */
+function defaultSummarizer(name: string, _input: Record<string, unknown>): string {
+  return name;
 }
 
 // ── Agent loop ──────────────────────────────────────────────────────
@@ -90,6 +83,7 @@ export async function runAgentLoop(
     system?: string;
     signal?: AbortSignal;
     executor?: ToolExecutor;
+    summarizer?: ToolSummarizer;
     maxTokens?: number;
     tools?: unknown[];
   } = {},
@@ -172,7 +166,7 @@ export async function runAgentLoop(
         toolCallId: tc.id,
         toolName: tc.name,
         input: tc.input,
-        summary: toolSummary(tc),
+        summary: (options.summarizer ?? defaultSummarizer)(tc.name, tc.input),
       };
       allBlocks.push(block);
       callbacks.onToolCall(block);

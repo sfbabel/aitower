@@ -227,6 +227,11 @@ export function handleEvent(
       break;
     }
 
+    case "tools_available": {
+      state.toolRegistry = event.tools;
+      break;
+    }
+
     case "ack":
     case "pong":
       break;

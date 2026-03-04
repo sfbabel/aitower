@@ -5,7 +5,7 @@
  * Message and block types live in messages.ts.
  */
 
-import type { ModelId, UsageData } from "./messages";
+import type { ModelId, UsageData, ToolDisplayInfo } from "./messages";
 import type { Message, AIMessage } from "./messages";
 import type { PanelFocus } from "./focus";
 import type { ChatFocus } from "./chat";
@@ -49,6 +49,8 @@ export interface RenderState {
   pendingSend: { active: boolean; text: string };
   /** Errors buffered during streaming — flushed after AI message completes. */
   errorBuffer: string[];
+  /** Available tools reported by the daemon on connect. */
+  toolRegistry: ToolDisplayInfo[];
 }
 
 /** Streaming state is derived from pendingAI — no separate boolean. */
@@ -76,5 +78,6 @@ export function createInitialState(): RenderState {
     layout: { totalLines: 0, messageAreaHeight: 0 },
     pendingSend: { active: false, text: "" },
     errorBuffer: [],
+    toolRegistry: [],
   };
 }

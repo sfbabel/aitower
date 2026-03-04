@@ -98,6 +98,14 @@ export interface ConversationSummary {
   preview: string;
 }
 
+// ── Tool display info (daemon → TUI on connect) ────────────────────
+
+export interface ToolDisplayInfo {
+  name: string;     // "bash", "read", etc.
+  label: string;    // "$", "Read", etc.
+  color: string;    // hex color "#d19a66"
+}
+
 // ── Usage data ──────────────────────────────────────────────────────
 
 export interface UsageWindow {

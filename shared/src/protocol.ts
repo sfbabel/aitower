@@ -8,8 +8,8 @@
  * Commands flow client → daemon. Events flow daemon → client.
  */
 
-import type { ModelId, Block, MessageMetadata, UsageData, ConversationSummary } from "./messages";
-export type { ModelId, Block, MessageMetadata, UsageData, ConversationSummary };
+import type { ModelId, Block, MessageMetadata, UsageData, ConversationSummary, ToolDisplayInfo } from "./messages";
+export type { ModelId, Block, MessageMetadata, UsageData, ConversationSummary, ToolDisplayInfo };
 
 // ── Commands (client → daemon) ──────────────────────────────────────
 
@@ -211,6 +211,11 @@ export interface ConversationDeletedEvent {
   convId: string;
 }
 
+export interface ToolsAvailableEvent {
+  type: "tools_available";
+  tools: ToolDisplayInfo[];
+}
+
 export interface ErrorEvent {
   type: "error";
   reqId?: string;
@@ -237,4 +242,5 @@ export type Event =
   | ConversationLoadedEvent
   | ConversationUpdatedEvent
   | ConversationDeletedEvent
+  | ToolsAvailableEvent
   | ErrorEvent;

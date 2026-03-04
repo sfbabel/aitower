@@ -11,6 +11,7 @@ import { log } from "./log";
 import { loadAuth } from "./store";
 import { runAgentLoop, type AgentCallbacks } from "./agent";
 import { buildSystemPrompt } from "./system";
+import { getToolDefs, buildExecutor, summarizeTool } from "./tools/registry";
 import * as convStore from "./conversations";
 import type { DaemonServer, ConnectedClient } from "./server";
 import type { ApiMessage, ApiContentBlock } from "./messages";
@@ -136,6 +137,12 @@ export async function orchestrateSendMessage(
     const result = await runAgentLoop(apiMessages, conv.model, callbacks, {
       system: buildSystemPrompt(),
       signal: ac.signal,
+      tools: getToolDefs(),
+      executor: buildExecutor(),
+      summarizer: (name, input) => {
+        const s = summarizeTool(name, input);
+        return s.detail || s.label;
+      },
     });
 
     const endedAt = Date.now();

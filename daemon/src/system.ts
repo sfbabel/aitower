@@ -2,15 +2,18 @@
  * System prompt for exocortexd.
  *
  * Builds the system prompt sent to the Anthropic API.
- * Will grow as tools and capabilities are added.
+ * Base prompt + per-tool hints composed from the registry.
  */
+
+import { buildToolSystemHints } from "./tools/registry";
 
 export function buildSystemPrompt(): string {
   const cwd = process.cwd();
   const date = new Date().toLocaleDateString("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   });
-  return [
+
+  const base = [
     `You are an AI assistant. You are helpful, harmless, and honest.`,
     ``,
     `Environment:`,
@@ -18,4 +21,7 @@ export function buildSystemPrompt(): string {
     `- Date: ${date}`,
     `- Platform: ${process.platform} ${process.arch}`,
   ].join("\n");
+
+  const toolHints = buildToolSystemHints();
+  return toolHints ? `${base}\n\n${toolHints}` : base;
 }

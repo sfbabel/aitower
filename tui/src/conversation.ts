@@ -5,9 +5,10 @@
  * The only file that knows how to render conversations.
  */
 
-import type { Block, AIMessage } from "./messages";
+import type { Block, AIMessage, ToolDisplayInfo } from "./messages";
 import type { RenderState } from "./state";
 import { renderMetadata } from "./metadata";
+import { resolveToolDisplay } from "./toolstyles";
 import { theme } from "./theme";
 
 // ── Word wrapping ───────────────────────────────────────────────────
@@ -36,7 +37,7 @@ export function wordWrap(text: string, width: number): string[] {
 
 // ── Block rendering ─────────────────────────────────────────────────
 
-function renderBlock(block: Block, contentWidth: number): string[] {
+function renderBlock(block: Block, contentWidth: number, toolRegistry: ToolDisplayInfo[]): string[] {
   const lines: string[] = [];
 
   switch (block.type) {
@@ -53,20 +54,31 @@ function renderBlock(block: Block, contentWidth: number): string[] {
       break;
     }
     case "tool_call": {
-      const label = `${theme.tool}  ▸ ${block.toolName}${theme.reset}`;
-      const summary = block.summary ? `${theme.dim} ${block.summary}${theme.reset}` : "";
-      lines.push(`${label}${summary}`);
+      const display = resolveToolDisplay(block.toolName, block.summary, toolRegistry);
+      // Wrap the plain text, then apply colors per line
+      const plainText = display.detail ? `${display.label} ${display.detail}` : display.label;
+      const wrapped = wordWrap(plainText, contentWidth - 2);
+      for (let i = 0; i < wrapped.length; i++) {
+        if (i === 0) {
+          // First line: bold label + detail
+          const labelLen = display.label.length;
+          const rest = wrapped[0].slice(labelLen);
+          lines.push(`  ${display.fg}${theme.bold}${display.label}${theme.reset}${display.fg}${rest}${theme.reset}`);
+        } else {
+          lines.push(`  ${display.fg}${wrapped[i]}${theme.reset}`);
+        }
+      }
       break;
     }
     case "tool_result": {
-      const maxLines = 6;
+      const maxLines = 20;
       const prefix = block.isError ? `${theme.error}  ✗` : `${theme.dim}  ↳`;
       const outputLines = block.output.split("\n");
       const truncated = outputLines.length > maxLines;
       const visible = outputLines.slice(0, maxLines);
 
       for (const ol of visible) {
-        for (const wl of wordWrap(ol, contentWidth - 2)) {
+        for (const wl of wordWrap(ol, contentWidth - 4)) {
           lines.push(`${prefix} ${wl}${theme.reset}`);
         }
       }
@@ -108,11 +120,11 @@ function renderUserMessage(text: string, cols: number): string[] {
 
 // ── AI message rendering (left-aligned) ─────────────────────────────
 
-function renderAIMessage(msg: AIMessage, contentWidth: number): string[] {
+function renderAIMessage(msg: AIMessage, contentWidth: number, toolRegistry: ToolDisplayInfo[]): string[] {
   const lines: string[] = [];
 
   for (const block of msg.blocks) {
-    lines.push(...renderBlock(block, contentWidth));
+    lines.push(...renderBlock(block, contentWidth, toolRegistry));
   }
 
   lines.push(...renderMetadata(msg.metadata));
@@ -132,7 +144,7 @@ export function buildMessageLines(state: RenderState, availableWidth: number): s
     if (msg.role === "user") {
       lines.push(...renderUserMessage(msg.text, availableWidth));
     } else if (msg.role === "assistant") {
-      lines.push(...renderAIMessage(msg, contentWidth));
+      lines.push(...renderAIMessage(msg, contentWidth, state.toolRegistry));
     } else {
       const color = msg.color || theme.dim;
       for (const sl of msg.text.split("\n")) {
@@ -144,7 +156,7 @@ export function buildMessageLines(state: RenderState, availableWidth: number): s
   // Currently streaming AI message
   if (state.pendingAI) {
     lines.push("");
-    lines.push(...renderAIMessage(state.pendingAI, contentWidth));
+    lines.push(...renderAIMessage(state.pendingAI, contentWidth, state.toolRegistry));
   }
 
   return lines;

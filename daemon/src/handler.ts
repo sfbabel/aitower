@@ -10,6 +10,7 @@
 import { log } from "./log";
 import { refreshUsage, handleUsageHeaders, getLastUsage } from "./usage";
 import { orchestrateSendMessage } from "./orchestrator";
+import { getToolDisplayInfo } from "./tools/registry";
 import * as convStore from "./conversations";
 import { DaemonServer, type ConnectedClient } from "./server";
 import type { Command } from "./protocol";
@@ -26,6 +27,7 @@ export function createHandler(server: DaemonServer) {
 
       case "ping": {
         server.sendTo(client, { type: "pong", reqId: cmd.reqId });
+        server.sendTo(client, { type: "tools_available", tools: getToolDisplayInfo() });
         const lastUsage = getLastUsage();
         if (lastUsage) {
           server.sendTo(client, { type: "usage_update", usage: lastUsage });
