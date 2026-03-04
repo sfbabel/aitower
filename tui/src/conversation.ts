@@ -72,6 +72,7 @@ function renderBlock(block: Block, contentWidth: number, toolRegistry: ToolDispl
     }
     case "tool_result": {
       if (!showToolOutput) break;
+      const symbol = block.isError ? "✗" : "↳";
       const indent = "      ";  // 1 tab (6 spaces)
       const maxLines = 20;
       const fg = block.isError ? theme.error : theme.dim;
@@ -79,9 +80,12 @@ function renderBlock(block: Block, contentWidth: number, toolRegistry: ToolDispl
       const truncated = outputLines.length > maxLines;
       const visible = outputLines.slice(0, maxLines);
 
+      let first = true;
       for (const ol of visible) {
         for (const wl of wordWrap(ol, contentWidth - indent.length)) {
-          lines.push(`${fg}${indent}${wl}${theme.reset}`);
+          const prefix = first ? `    ${symbol} ` : indent;
+          first = false;
+          lines.push(`${fg}${prefix}${wl}${theme.reset}`);
         }
       }
       if (truncated) {
