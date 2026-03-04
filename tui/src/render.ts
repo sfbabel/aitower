@@ -126,7 +126,7 @@ export function render(state: RenderState): void {
   for (let i = 0; i < inputRowCount; i++) {
     const row = firstInputRow + i;
     const promptGlyph = (i === 0 && !isNewLine[i]) ? ">" : "+";
-    const promptStyle = promptFocused ? `${theme.bold}${theme.accent}` : theme.dim;
+    const promptStyle = promptFocused ? theme.accent : theme.dim;
     const prompt = ` ${promptStyle}${promptGlyph}${theme.reset} `;
     out.push(move_to(row, 1) + clear_line);
     if (sidebarOpen && sbRows[row - 1]) {
