@@ -37,7 +37,7 @@ export function wordWrap(text: string, width: number): string[] {
 
 // ── Block rendering ─────────────────────────────────────────────────
 
-function renderBlock(block: Block, contentWidth: number, toolRegistry: ToolDisplayInfo[]): string[] {
+function renderBlock(block: Block, contentWidth: number, toolRegistry: ToolDisplayInfo[], showToolOutput: boolean): string[] {
   const lines: string[] = [];
 
   switch (block.type) {
@@ -71,19 +71,21 @@ function renderBlock(block: Block, contentWidth: number, toolRegistry: ToolDispl
       break;
     }
     case "tool_result": {
+      if (!showToolOutput) break;
+      const indent = "      ";  // 1 tab (6 spaces)
       const maxLines = 20;
-      const prefix = block.isError ? `${theme.error}  ✗` : `${theme.dim}  ↳`;
+      const fg = block.isError ? theme.error : theme.dim;
       const outputLines = block.output.split("\n");
       const truncated = outputLines.length > maxLines;
       const visible = outputLines.slice(0, maxLines);
 
       for (const ol of visible) {
-        for (const wl of wordWrap(ol, contentWidth - 4)) {
-          lines.push(`${prefix} ${wl}${theme.reset}`);
+        for (const wl of wordWrap(ol, contentWidth - indent.length)) {
+          lines.push(`${fg}${indent}${wl}${theme.reset}`);
         }
       }
       if (truncated) {
-        lines.push(`${prefix} … (${outputLines.length - maxLines} more lines)${theme.reset}`);
+        lines.push(`${fg}${indent}… (${outputLines.length - maxLines} more lines)${theme.reset}`);
       }
       break;
     }
@@ -120,11 +122,11 @@ function renderUserMessage(text: string, cols: number): string[] {
 
 // ── AI message rendering (left-aligned) ─────────────────────────────
 
-function renderAIMessage(msg: AIMessage, contentWidth: number, toolRegistry: ToolDisplayInfo[]): string[] {
+function renderAIMessage(msg: AIMessage, contentWidth: number, toolRegistry: ToolDisplayInfo[], showToolOutput: boolean): string[] {
   const lines: string[] = [];
 
   for (const block of msg.blocks) {
-    lines.push(...renderBlock(block, contentWidth, toolRegistry));
+    lines.push(...renderBlock(block, contentWidth, toolRegistry, showToolOutput));
   }
 
   lines.push(...renderMetadata(msg.metadata));
@@ -144,7 +146,7 @@ export function buildMessageLines(state: RenderState, availableWidth: number): s
     if (msg.role === "user") {
       lines.push(...renderUserMessage(msg.text, availableWidth));
     } else if (msg.role === "assistant") {
-      lines.push(...renderAIMessage(msg, contentWidth, state.toolRegistry));
+      lines.push(...renderAIMessage(msg, contentWidth, state.toolRegistry, state.showToolOutput));
     } else {
       const color = msg.color || theme.dim;
       for (const sl of msg.text.split("\n")) {
@@ -156,7 +158,7 @@ export function buildMessageLines(state: RenderState, availableWidth: number): s
   // Currently streaming AI message
   if (state.pendingAI) {
     lines.push("");
-    lines.push(...renderAIMessage(state.pendingAI, contentWidth, state.toolRegistry));
+    lines.push(...renderAIMessage(state.pendingAI, contentWidth, state.toolRegistry, state.showToolOutput));
   }
 
   return lines;

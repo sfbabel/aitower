@@ -49,6 +49,8 @@ export type Action =
   | "scroll_bottom"
   // Conversation
   | "new_conversation"
+  // Display toggles
+  | "toggle_tool_output"
   // Sidebar navigation (from any panel)
   | "sidebar_next"
   | "sidebar_prev";
@@ -69,6 +71,9 @@ const BINDS: Record<string, Action> = {
 
   // Conversation
   "ctrl-shift-o": "new_conversation",
+
+  // Display toggles
+  "ctrl-o":       "toggle_tool_output",
 
   // Sidebar quick nav (Shift+J/K from any panel)
   "char:J":     "sidebar_next",

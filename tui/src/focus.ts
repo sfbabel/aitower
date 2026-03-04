@@ -77,6 +77,9 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
     case "scroll_page_down": handleScroll(state, scrollPageDown); return { type: "handled" };
     case "scroll_top":       handleScroll(state, scrollToTop);    return { type: "handled" };
     case "scroll_bottom":    handleScroll(state, scrollToBottom); return { type: "handled" };
+    case "toggle_tool_output":
+      state.showToolOutput = !state.showToolOutput;
+      return { type: "handled" };
   }
 
   // ── Sidebar pending delete cancel (before vim) ──────────────────

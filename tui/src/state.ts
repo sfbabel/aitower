@@ -51,6 +51,8 @@ export interface RenderState {
   errorBuffer: string[];
   /** Available tools reported by the daemon on connect. */
   toolRegistry: ToolDisplayInfo[];
+  /** Whether tool result output is visible. Toggled with Ctrl+O. */
+  showToolOutput: boolean;
 }
 
 /** Streaming state is derived from pendingAI — no separate boolean. */
@@ -79,5 +81,6 @@ export function createInitialState(): RenderState {
     pendingSend: { active: false, text: "" },
     errorBuffer: [],
     toolRegistry: [],
+    showToolOutput: false,
   };
 }
