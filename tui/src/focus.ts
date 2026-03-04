@@ -64,6 +64,16 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
     case "scroll_page_down": handleScroll(state, scrollPageDown); return { type: "handled" };
   }
 
+  // ── Sidebar pending delete cancel (before vim) ──────────────────
+  if (action === "abort" && state.panelFocus === "sidebar" && state.sidebar.pendingDeleteId) {
+    state.sidebar.pendingDeleteId = null;
+    // Also normalize vim to normal mode so we don't eat the next Escape
+    if (state.vim.enabled && state.vim.mode === "insert") {
+      state.vim.mode = "normal";
+    }
+    return { type: "handled" };
+  }
+
   // ── Vim processing ─────────────────────────────────────────────
   if (state.vim.enabled) {
     const vimResult = processVimKey(key, state);
@@ -73,11 +83,6 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
 
   // ── Abort (only when vim doesn't consume Esc) ──────────────────
   if (action === "abort") {
-    // Escape clears pending delete in sidebar before aborting
-    if (state.panelFocus === "sidebar" && state.sidebar.pendingDeleteId) {
-      state.sidebar.pendingDeleteId = null;
-      return { type: "handled" };
-    }
     return { type: "abort" };
   }
 
