@@ -21,15 +21,13 @@ import * as ops from "./operators";
 
 // ── Normal mode cursor clamping ────────────────────────────────────
 
-/** In normal mode, cursor sits ON the last char of the line, never past it or on \n. */
+/** In normal mode, cursor sits ON the last char of the line, never past it.
+ *  If buffer ends with \n, cursor can be at buf.length (the implicit empty line). */
 function clampNormal(buffer: string, pos: number): number {
   if (buffer.length === 0) return 0;
-  let p = Math.min(pos, buffer.length - 1);
-  // Never sit on a newline — back up to the char before it (or stay if line is empty)
-  if (buffer[p] === "\n" && p > 0 && buffer[p - 1] !== "\n") {
-    p--;
-  }
-  return Math.max(0, p);
+  // If buffer ends with \n, allow cursor at buffer.length (empty trailing line)
+  const max = buffer[buffer.length - 1] === "\n" ? buffer.length : buffer.length - 1;
+  return Math.max(0, Math.min(pos, max));
 }
 
 // ── Key string conversion ──────────────────────────────────────────

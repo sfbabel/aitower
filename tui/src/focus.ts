@@ -202,10 +202,8 @@ function handleContextNavigation(dir: "up" | "down", state: RenderState): KeyRes
 function clampCursorNormal(state: RenderState): void {
   const buf = state.inputBuffer;
   if (buf.length === 0) { state.cursorPos = 0; return; }
-  let p = Math.min(state.cursorPos, buf.length - 1);
-  // Never sit on a newline
-  if (buf[p] === "\n" && p > 0 && buf[p - 1] !== "\n") p--;
-  state.cursorPos = Math.max(0, p);
+  const max = buf[buf.length - 1] === "\n" ? buf.length : buf.length - 1;
+  state.cursorPos = Math.max(0, Math.min(state.cursorPos, max));
 }
 
 // ── Scroll dispatch ────────────────────────────────────────────────
