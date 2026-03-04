@@ -103,6 +103,6 @@ export function tryCommand(text: string, state: RenderState): CommandResult | nu
 }
 
 /** List all registered commands (for /help, autocomplete, etc). */
-export function listCommands(): readonly SlashCommand[] {
+function listCommands(): readonly SlashCommand[] {
   return commands;
 }

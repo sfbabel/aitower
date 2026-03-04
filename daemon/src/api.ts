@@ -91,7 +91,7 @@ export class OverloadError extends Error {
 
 // ── Token management ────────────────────────────────────────────────
 
-export async function getAccessToken(): Promise<string> {
+async function getAccessToken(): Promise<string> {
   const auth = loadAuth();
   if (!auth?.tokens?.accessToken) throw new Error("Not authenticated");
 

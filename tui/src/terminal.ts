@@ -12,4 +12,3 @@ export const hide_cursor = `${ESC}?25l`;
 export const show_cursor = `${ESC}?25h`;
 export const enter_alt = `${ESC}?1049h`;
 export const leave_alt = `${ESC}?1049l`;
-export const clear_screen = `${ESC}2J${ESC}H`;

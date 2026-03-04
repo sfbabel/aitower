@@ -13,7 +13,7 @@ import type { ModelId } from "./messages";
 
 export type EventHandler = (event: Event) => void;
 
-export function defaultSocketPath(): string {
+function defaultSocketPath(): string {
   const xdg = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
   return join(xdg, "exocortex", "runtime", "exocortexd.sock");
 }

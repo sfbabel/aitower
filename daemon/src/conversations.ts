@@ -40,9 +40,6 @@ export function get(id: string): Conversation | undefined {
   return conversations.get(id);
 }
 
-export function getAll(): Conversation[] {
-  return Array.from(conversations.values());
-}
 
 export function setModel(id: string, model: ModelId): boolean {
   const conv = conversations.get(id);

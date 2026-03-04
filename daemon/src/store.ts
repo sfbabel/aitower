@@ -70,12 +70,6 @@ export function loadAuth(): StoredAuth | null {
   return null;
 }
 
-export function clearAuth(): void {
-  if (existsSync(CRED_FILE)) {
-    writeFileSync(CRED_FILE, "", { mode: 0o600 });
-  }
-}
-
 export function isTokenExpired(tokens: StoredTokens): boolean {
   if (!tokens.expiresAt) return true;
   return Date.now() >= tokens.expiresAt - 300_000; // 5 min buffer
