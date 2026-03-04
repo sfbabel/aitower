@@ -18,6 +18,14 @@ import { lookupCommand, isPrefix } from "./keymap";
 import { resolveMotion } from "./motions";
 import * as ops from "./operators";
 
+// ── Normal mode cursor clamping ────────────────────────────────────
+
+/** In normal mode, cursor sits ON the last char, never past it. */
+function clampNormal(buffer: string, pos: number): number {
+  if (buffer.length === 0) return 0;
+  return Math.min(pos, buffer.length - 1);
+}
+
 // ── Key string conversion ──────────────────────────────────────────
 
 /** Convert a KeyEvent to the key string used in the keymap. */
@@ -52,7 +60,7 @@ export function processKey(
 ): VimResult {
   // ── Insert mode ────────────────────────────────────────────────
   if (vim.mode === "insert") {
-    return handleInsertMode(key, vim, cursor);
+    return handleInsertMode(key, vim, buffer, cursor);
   }
 
   // ── Normal mode ────────────────────────────────────────────────
@@ -61,12 +69,12 @@ export function processKey(
 
 // ── Insert mode handling ───────────────────────────────────────────
 
-function handleInsertMode(key: KeyEvent, vim: VimState, cursor: number): VimResult {
+function handleInsertMode(key: KeyEvent, vim: VimState, buffer: string, cursor: number): VimResult {
   if (key.type === "escape") {
     vim.mode = "normal";
     resetPending(vim);
-    // Vim convention: cursor moves left on Esc from insert mode
-    const newCursor = Math.max(0, cursor - 1);
+    // Vim convention: cursor moves left on Esc from insert mode, clamped
+    const newCursor = clampNormal(buffer, Math.max(0, cursor - 1));
     return { type: "mode_change", mode: "normal", cursor: newCursor };
   }
   // Everything else passes through to promptline / existing system
@@ -212,6 +220,9 @@ function executeMotion(
   for (let i = 0; i < count; i++) {
     pos = motionFn(buffer, pos);
   }
+
+  // Normal mode: cursor can't go past last character
+  pos = clampNormal(buffer, pos);
 
   resetPending(vim);
   return { type: "cursor_move", cursor: pos };

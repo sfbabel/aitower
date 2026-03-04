@@ -93,7 +93,12 @@ function processVimKey(key: KeyEvent, state: RenderState): KeyResult | null {
     case "buffer_edit":
       state.inputBuffer = result.buffer;
       state.cursorPos = result.cursor;
-      if (result.mode) state.vim.mode = result.mode;
+      if (result.mode) {
+        state.vim.mode = result.mode;
+      } else {
+        // Staying in normal mode — clamp cursor to last char
+        clampCursorNormal(state);
+      }
       return { type: "handled" };
 
     case "mode_change":
@@ -172,6 +177,16 @@ function handleContextNavigation(dir: "up" | "down", state: RenderState): KeyRes
     }
   }
   return { type: "handled" };
+}
+
+// ── Normal mode cursor clamp ───────────────────────────────────────
+
+function clampCursorNormal(state: RenderState): void {
+  if (state.inputBuffer.length > 0) {
+    state.cursorPos = Math.min(state.cursorPos, state.inputBuffer.length - 1);
+  } else {
+    state.cursorPos = 0;
+  }
 }
 
 // ── Context resolver ───────────────────────────────────────────────
