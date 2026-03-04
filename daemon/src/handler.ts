@@ -3,54 +3,35 @@
  *
  * Routes IPC commands to the appropriate action. Thin dispatcher —
  * orchestration lives in orchestrator.ts, conversation data
- * transformations live in conversations.ts.
+ * transformations live in conversations.ts, usage state lives
+ * in usage.ts.
  */
 
 import { log } from "./log";
-import { loadAuth } from "./store";
-import { fetchUsage, parseUsageHeaders } from "./usage";
+import { refreshUsage, handleUsageHeaders, getLastUsage } from "./usage";
 import { orchestrateSendMessage } from "./orchestrator";
 import * as convStore from "./conversations";
 import { DaemonServer, type ConnectedClient } from "./server";
 import type { Command } from "./protocol";
-import type { ModelId, UsageData } from "./messages";
 
 // ── Handler ─────────────────────────────────────────────────────────
 
 export function createHandler(server: DaemonServer) {
-  let lastUsage: UsageData | null = null;
-
-  /** Fetch usage and broadcast to all clients. */
-  function refreshUsage(): void {
-    const auth = loadAuth();
-    if (!auth?.tokens?.accessToken) return;
-    fetchUsage(auth.tokens.accessToken).then((usage) => {
-      if (usage) {
-        lastUsage = usage;
-        server.broadcast({ type: "usage_update", usage });
-      }
-    });
-  }
-
-  /** Update usage from streaming response headers and broadcast. */
-  function handleHeaders(headers: Headers): void {
-    const usage = parseUsageHeaders(headers, lastUsage);
-    if (usage) {
-      lastUsage = usage;
-      server.broadcast({ type: "usage_update", usage });
-    }
-  }
+  const broadcastUsage = (usage: import("./messages").UsageData) => {
+    server.broadcast({ type: "usage_update", usage });
+  };
 
   return async function handleCommand(client: ConnectedClient, cmd: Command): Promise<void> {
     switch (cmd.type) {
 
       case "ping": {
         server.sendTo(client, { type: "pong", reqId: cmd.reqId });
+        const lastUsage = getLastUsage();
         if (lastUsage) {
           server.sendTo(client, { type: "usage_update", usage: lastUsage });
         }
         server.sendTo(client, { type: "conversations_list", conversations: convStore.listSummaries() });
-        refreshUsage();
+        refreshUsage(broadcastUsage);
         break;
       }
 
@@ -94,7 +75,10 @@ export function createHandler(server: DaemonServer) {
       case "send_message": {
         await orchestrateSendMessage(
           server, client, cmd.reqId, cmd.convId, cmd.text, cmd.startedAt,
-          { onHeaders: handleHeaders, onComplete: refreshUsage },
+          {
+            onHeaders: (h) => handleUsageHeaders(h, broadcastUsage),
+            onComplete: () => refreshUsage(broadcastUsage),
+          },
         );
         break;
       }

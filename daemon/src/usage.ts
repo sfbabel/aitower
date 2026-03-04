@@ -1,26 +1,52 @@
 /**
- * Usage data fetching and parsing for exocortexd.
+ * Usage data fetching, parsing, and caching for exocortexd.
  *
- * Fetches rate-limit utilization from the Anthropic API and
- * parses usage headers from streaming responses. Pure data
- * fetching — no IPC or server knowledge.
+ * Fetches rate-limit utilization from the Anthropic API,
+ * parses usage headers from streaming responses, and caches
+ * the latest usage state. Broadcasting is injected via callbacks
+ * — this file has no IPC or server knowledge.
  */
 
 import { log } from "./log";
+import { loadAuth } from "./store";
 import type { UsageData, UsageWindow } from "./messages";
 
-// ── API fetch ───────────────────────────────────────────────────────
+// ── Cached state ───────────────────────────────────────────────────
+
+let lastUsage: UsageData | null = null;
+
+/** Return the last known usage data (may be null before first fetch). */
+export function getLastUsage(): UsageData | null {
+  return lastUsage;
+}
+
+// ── Refresh (full API fetch) ───────────────────────────────────────
 
 const BASE_URL = "https://api.anthropic.com";
 
-export async function fetchUsage(accessToken: string): Promise<UsageData | null> {
+/**
+ * Fetch latest usage from the Anthropic API and cache it.
+ * Calls onUpdate if new data is received.
+ */
+export function refreshUsage(onUpdate: (usage: UsageData) => void): void {
+  const auth = loadAuth();
+  if (!auth?.tokens?.accessToken) return;
+
+  fetchUsage(auth.tokens.accessToken).then((usage) => {
+    if (usage) {
+      lastUsage = usage;
+      onUpdate(usage);
+    }
+  });
+}
+
+async function fetchUsage(accessToken: string): Promise<UsageData | null> {
   try {
     const res = await fetch(`${BASE_URL}/api/oauth/usage`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "anthropic-beta": "oauth-2025-04-20",
         "Content-Type": "application/json",
-        // Must mirror Claude Code — see api.ts header comment
         "User-Agent": "claude-code/2.1.68",
       },
       signal: AbortSignal.timeout(5000),
@@ -32,6 +58,41 @@ export async function fetchUsage(accessToken: string): Promise<UsageData | null>
     log("warn", `usage: fetch failed: ${err instanceof Error ? err.message : err}`);
     return null;
   }
+}
+
+// ── Header parsing (mid-stream updates) ─────────────────────────────
+
+/**
+ * Parse rate-limit usage from streaming response headers and cache it.
+ * Calls onUpdate if usage data was found in the headers.
+ */
+export function handleUsageHeaders(headers: Headers, onUpdate: (usage: UsageData) => void): void {
+  const usage = parseHeaders(headers);
+  if (usage) {
+    lastUsage = usage;
+    onUpdate(usage);
+  }
+}
+
+function parseHeaders(headers: Headers): UsageData | null {
+  const fiveUtil = headers.get("anthropic-ratelimit-unified-5h-utilization");
+  const fiveReset = headers.get("anthropic-ratelimit-unified-5h-reset");
+  const sevenUtil = headers.get("anthropic-ratelimit-unified-7d-utilization");
+  const sevenReset = headers.get("anthropic-ratelimit-unified-7d-reset");
+
+  if (!fiveUtil && !sevenUtil) return null;
+
+  const fiveHourUtil = fiveUtil ? parseFloat(fiveUtil) * 100 : null;
+  const sevenDayUtil = sevenUtil ? parseFloat(sevenUtil) * 100 : null;
+
+  return {
+    fiveHour: fiveHourUtil !== null
+      ? { utilization: Math.max(fiveHourUtil, lastUsage?.fiveHour?.utilization ?? 0), resetsAt: parseResetValue(fiveReset) ?? lastUsage?.fiveHour?.resetsAt ?? null }
+      : lastUsage?.fiveHour ?? null,
+    sevenDay: sevenDayUtil !== null
+      ? { utilization: Math.max(sevenDayUtil, lastUsage?.sevenDay?.utilization ?? 0), resetsAt: parseResetValue(sevenReset) ?? lastUsage?.sevenDay?.resetsAt ?? null }
+      : lastUsage?.sevenDay ?? null,
+  };
 }
 
 // ── Response parsing ────────────────────────────────────────────────
@@ -50,35 +111,6 @@ function parseWindow(w: any): UsageWindow | null {
     resetsAt: parseResetValue(w.resets_at),
   };
 }
-
-// ── Header parsing ──────────────────────────────────────────────────
-
-/**
- * Parse rate-limit usage from streaming response headers.
- * Returns updated UsageData, or null if no usage headers present.
- */
-export function parseUsageHeaders(headers: Headers, prev: UsageData | null): UsageData | null {
-  const fiveUtil = headers.get("anthropic-ratelimit-unified-5h-utilization");
-  const fiveReset = headers.get("anthropic-ratelimit-unified-5h-reset");
-  const sevenUtil = headers.get("anthropic-ratelimit-unified-7d-utilization");
-  const sevenReset = headers.get("anthropic-ratelimit-unified-7d-reset");
-
-  if (!fiveUtil && !sevenUtil) return null;
-
-  const fiveHourUtil = fiveUtil ? parseFloat(fiveUtil) * 100 : null;
-  const sevenDayUtil = sevenUtil ? parseFloat(sevenUtil) * 100 : null;
-
-  return {
-    fiveHour: fiveHourUtil !== null
-      ? { utilization: Math.max(fiveHourUtil, prev?.fiveHour?.utilization ?? 0), resetsAt: parseResetValue(fiveReset) ?? prev?.fiveHour?.resetsAt ?? null }
-      : prev?.fiveHour ?? null,
-    sevenDay: sevenDayUtil !== null
-      ? { utilization: Math.max(sevenDayUtil, prev?.sevenDay?.utilization ?? 0), resetsAt: parseResetValue(sevenReset) ?? prev?.sevenDay?.resetsAt ?? null }
-      : prev?.sevenDay ?? null,
-  };
-}
-
-// ── Shared helpers ──────────────────────────────────────────────────
 
 function parseResetValue(val: any): number | null {
   if (val == null) return null;
