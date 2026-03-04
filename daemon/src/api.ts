@@ -5,6 +5,7 @@
  * This is the sole point of contact with the Anthropic API.
  */
 
+import { randomBytes, randomUUID } from "crypto";
 import { loadAuth, isTokenExpired, saveAuth } from "./store";
 import { refreshTokens, AuthError } from "./auth";
 import { log } from "./log";
@@ -17,9 +18,28 @@ export { AuthError };
 
 const BASE_URL = "https://api.anthropic.com";
 const API_VERSION = "2023-06-01";
-const BETA_BASE = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27";
+// IMPORTANT: User-Agent, beta headers, and metadata.user_id must mirror Claude
+// Code exactly. The API uses these for request routing and priority — using a
+// custom name (e.g. "exocortex/0.1.0") causes consistent load shedding
+// (overloaded_error). Update these when Claude Code releases a new version.
+// See Mnemo reference/api-request-identity.md for the full story.
+const CLAUDE_CODE_VERSION = "2.1.68";
+const CLAUDE_CODE_USER_AGENT = `claude-code/${CLAUDE_CODE_VERSION}`;
+const BETA_BASE = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,prompt-caching-scope-2026-01-05";
 const BETA_ADAPTIVE = `${BETA_BASE},adaptive-thinking-2026-01-28`;
 const STREAM_STALL_TIMEOUT = 120_000;
+
+let _userId: string | null = null;
+const _sessionId: string = randomUUID();
+
+function getMetadataUserId(): string {
+  if (_userId) return _userId;
+  const auth = loadAuth();
+  const accountUuid = auth?.profile?.accountUuid ?? "";
+  const userHash = randomBytes(32).toString("hex");
+  _userId = `user_${userHash}_account_${accountUuid}_session_${_sessionId}`;
+  return _userId;
+}
 
 const MODEL_IDS: Record<ModelId, string> = {
   sonnet: "claude-sonnet-4-6",
@@ -113,6 +133,7 @@ function buildRequest(
   const body: Record<string, unknown> = {
     model: MODEL_IDS[model], messages, max_tokens: maxTokens,
     thinking, stream: true,
+    metadata: { user_id: getMetadataUserId() },
   };
   if (tools && tools.length > 0) body.tools = tools;
   if (system) {
@@ -128,7 +149,7 @@ function buildRequest(
         "anthropic-version": API_VERSION,
         "anthropic-beta": adaptive ? BETA_ADAPTIVE : BETA_BASE,
         "Content-Type": "application/json",
-        "User-Agent": "exocortex/0.1.0",
+        "User-Agent": CLAUDE_CODE_USER_AGENT,
         "x-app": "cli",
       },
       body: JSON.stringify(body),

@@ -20,7 +20,8 @@ export async function fetchUsage(accessToken: string): Promise<UsageData | null>
         Authorization: `Bearer ${accessToken}`,
         "anthropic-beta": "oauth-2025-04-20",
         "Content-Type": "application/json",
-        "User-Agent": "exocortex/0.1.0",
+        // Must mirror Claude Code — see api.ts header comment
+        "User-Agent": "claude-code/2.1.68",
       },
       signal: AbortSignal.timeout(5000),
     });
