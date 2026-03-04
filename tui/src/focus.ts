@@ -20,7 +20,7 @@ import {
   scrollHalfUp, scrollHalfDown,
   scrollPageUp, scrollPageDown,
 } from "./chat";
-import { handleSidebarKey, handleSidebarAction } from "./sidebar";
+import { handleSidebarKey, handleSidebarAction, moveSelection } from "./sidebar";
 import { processKey, type VimContext } from "./vim";
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -56,6 +56,17 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
       return { type: "handled" };
     case "new_conversation":
       return { type: "new_conversation" };
+    case "sidebar_next":
+    case "sidebar_prev": {
+      // Don't intercept when typing in the prompt — these are regular chars
+      const isPromptTyping = state.panelFocus === "chat" && state.chatFocus === "prompt"
+        && (!state.vim.enabled || state.vim.mode === "insert");
+      if (isPromptTyping) break;
+      if (!state.sidebar.open) state.sidebar.open = true;
+      state.panelFocus = "sidebar";
+      moveSelection(state.sidebar, action === "sidebar_next" ? 1 : -1);
+      return { type: "handled" };
+    }
     case "scroll_line_up":   handleScroll(state, scrollLineUp);   return { type: "handled" };
     case "scroll_line_down": handleScroll(state, scrollLineDown); return { type: "handled" };
     case "scroll_half_up":   handleScroll(state, scrollHalfUp);   return { type: "handled" };

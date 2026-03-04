@@ -46,7 +46,10 @@ export type Action =
   | "scroll_page_up"
   | "scroll_page_down"
   // Conversation
-  | "new_conversation";
+  | "new_conversation"
+  // Sidebar navigation (from any panel)
+  | "sidebar_next"
+  | "sidebar_prev";
 
 // ── Keybind map ─────────────────────────────────────────────────────
 
@@ -64,6 +67,10 @@ const BINDS: Record<string, Action> = {
 
   // Conversation
   "ctrl-shift-o": "new_conversation",
+
+  // Sidebar quick nav (Shift+J/K from any panel)
+  "char:J":     "sidebar_next",
+  "char:K":     "sidebar_prev",
 
   // Scrolling
   "ctrl-y":     "scroll_line_up",
@@ -94,9 +101,7 @@ const BINDS: Record<string, Action> = {
  */
 const NAV_BINDS: Record<string, Action> = {
   "char:j":     "nav_down",
-  "char:J":     "nav_down",
   "char:k":     "nav_up",
-  "char:K":     "nav_up",
   "char:i":     "focus_prompt",
   "char:a":     "focus_prompt",
   "char:d":     "delete",

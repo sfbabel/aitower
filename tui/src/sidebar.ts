@@ -101,7 +101,7 @@ export function handleSidebarAction(action: string, sidebar: SidebarState): Side
   }
 }
 
-function moveSelection(sidebar: SidebarState, delta: number): void {
+export function moveSelection(sidebar: SidebarState, delta: number): void {
   sidebar.selectedIndex = Math.max(0, Math.min(
     sidebar.selectedIndex + delta,
     sidebar.conversations.length - 1,
