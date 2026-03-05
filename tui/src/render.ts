@@ -179,42 +179,40 @@ export function render(state: RenderState): void {
       const line = allLines[lineIdx];
 
       if (inVisual && lineIdx >= vStartRow && lineIdx <= vEndRow) {
-        // This line is part of the visual selection
-        let rendered: string;
+        // This line is part of the visual selection — text-bound highlight
+        const plain = stripAnsi(line);
+        const bounds = contentBounds(plain);
+        let startCol: number;
+        let endCol: number;
+
         if (state.vim.mode === "visual-line") {
-          // Full line highlight
-          rendered = renderLineWithSelection(line, -1, -1);
+          // Line mode: highlight content bounds (not full terminal width)
+          startCol = bounds.start;
+          endCol = bounds.end;
+        } else if (vStartRow === vEndRow) {
+          // Single-line character selection
+          startCol = Math.min(vAnchor.col, vCursor.col);
+          endCol = Math.max(vAnchor.col, vCursor.col);
+        } else if (lineIdx === vStartRow) {
+          const anchorIsStart = vAnchor.row <= vCursor.row;
+          startCol = anchorIsStart ? vAnchor.col : vCursor.col;
+          endCol = bounds.end;
+        } else if (lineIdx === vEndRow) {
+          const anchorIsStart = vAnchor.row <= vCursor.row;
+          startCol = bounds.start;
+          endCol = anchorIsStart ? vCursor.col : vAnchor.col;
         } else {
-          // Character selection — compute column range for this row
-          let startCol: number;
-          let endCol: number;
-          if (vStartRow === vEndRow) {
-            startCol = Math.min(vAnchor.col, vCursor.col);
-            endCol = Math.max(vAnchor.col, vCursor.col);
-          } else if (lineIdx === vStartRow) {
-            const anchorIsStart = vAnchor.row <= vCursor.row;
-            startCol = anchorIsStart ? vAnchor.col : vCursor.col;
-            const plain = stripAnsi(line);
-            const bounds = contentBounds(plain);
-            endCol = bounds.end;
-          } else if (lineIdx === vEndRow) {
-            const anchorIsStart = vAnchor.row <= vCursor.row;
-            const plain = stripAnsi(line);
-            const bounds = contentBounds(plain);
-            startCol = bounds.start;
-            endCol = anchorIsStart ? vCursor.col : vAnchor.col;
-          } else {
-            // Middle lines: full content
-            startCol = -1;
-            endCol = -1;
-          }
-          rendered = renderLineWithSelection(line, startCol, endCol);
+          // Middle lines: full content bounds
+          startCol = bounds.start;
+          endCol = bounds.end;
         }
+
+        let rendered = renderLineWithSelection(line, startCol, endCol);
         // Cursor overlay on cursor row
         if (lineIdx === state.historyCursor.row) {
           rendered = renderLineWithCursor(rendered, state.historyCursor.col);
         }
-        out.push(applyLineBg(rendered, theme.selectionBg));
+        out.push(rendered);
       } else if (historyFocused && lineIdx === state.historyCursor.row) {
         const withCursor = renderLineWithCursor(line, state.historyCursor.col);
         out.push(applyLineBg(withCursor, theme.historyLineBg));
