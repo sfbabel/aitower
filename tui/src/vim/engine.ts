@@ -301,7 +301,7 @@ function applyOperatorToRange(
     }
     case "yank": {
       const text = buffer.slice(start, end);
-      return { type: "yank", text, cursor: start };
+      return { type: "yank", text };
     }
     default:
       return { type: "noop" };
@@ -394,7 +394,7 @@ function executeStandalone(
       // Include the trailing newline if it exists
       const end = le < buffer.length ? le + 1 : le;
       const text = buffer.slice(ls, end);
-      return { type: "yank", text, cursor: ls };
+      return { type: "yank", text };
     }
 
     case "paste_after":

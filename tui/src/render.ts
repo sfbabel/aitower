@@ -12,7 +12,7 @@ import { renderTopbar } from "./topbar";
 import { renderSidebar, SIDEBAR_WIDTH } from "./sidebar";
 import { buildMessageLines } from "./conversation";
 import { getInputLines } from "./promptline";
-import { show_cursor, hide_cursor, cursor_block, cursor_bar } from "./terminal";
+import { show_cursor, hide_cursor, cursor_block, cursor_underline, cursor_bar } from "./terminal";
 import { theme } from "./theme";
 
 // ── ANSI positioning (non-color escapes) ────────────────────────────
@@ -175,7 +175,11 @@ export function render(state: RenderState): void {
     const cursorScreenRow = firstInputRow + cursorLine;
     out.push(move_to(cursorScreenRow, chatCol + promptLen + cursorCol));
     // Vim: block cursor in normal mode, bar cursor in insert mode
-    out.push(state.vim.mode === "normal" ? cursor_block : cursor_bar);
+    out.push(
+      state.vim.mode === "insert" ? cursor_bar
+        : state.vim.pendingOperator ? cursor_underline
+        : cursor_block,
+    );
     out.push(show_cursor);
   } else {
     out.push(hide_cursor);

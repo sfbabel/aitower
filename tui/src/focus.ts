@@ -143,7 +143,6 @@ function processVimKey(key: KeyEvent, state: RenderState): KeyResult | null {
 
     case "yank":
       copyToClipboard(result.text);
-      state.cursorPos = result.cursor;
       return { type: "handled" };
 
     case "paste":
