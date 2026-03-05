@@ -30,34 +30,52 @@ const BASE_URL = "https://api.anthropic.com";
  */
 export function refreshUsage(onUpdate: (usage: UsageData) => void): void {
   const auth = loadAuth();
-  if (!auth?.tokens?.accessToken) return;
+  if (!auth?.tokens?.accessToken) {
+    log("warn", "usage: no access token, skipping refresh");
+    return;
+  }
 
   fetchUsage(auth.tokens.accessToken).then((usage) => {
     if (usage) {
       lastUsage = usage;
       onUpdate(usage);
+    } else {
+      log("warn", "usage: fetch returned null");
     }
   });
 }
 
-async function fetchUsage(accessToken: string): Promise<UsageData | null> {
-  try {
-    const res = await fetch(`${BASE_URL}/api/oauth/usage`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "anthropic-beta": "oauth-2025-04-20",
-        "Content-Type": "application/json",
-        "User-Agent": "claude-code/2.1.68",
-      },
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return parseUsageResponse(data);
-  } catch (err) {
-    log("warn", `usage: fetch failed: ${err instanceof Error ? err.message : err}`);
-    return null;
+async function fetchUsage(accessToken: string, retries = 3): Promise<UsageData | null> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/oauth/usage`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "anthropic-beta": "oauth-2025-04-20",
+          "Content-Type": "application/json",
+          "User-Agent": "claude-code/2.1.68",
+        },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.status === 429 && attempt < retries) {
+        const delay = 1000 * (attempt + 1);
+        log("warn", `usage: 429, retrying in ${delay}ms (${attempt + 1}/${retries})`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      if (!res.ok) {
+        log("warn", `usage: API returned ${res.status} ${res.statusText}`);
+        return null;
+      }
+      const data = await res.json();
+      log("info", `usage: fetched (5h=${data?.five_hour?.utilization}, 7d=${data?.seven_day?.utilization})`);
+      return parseUsageResponse(data);
+    } catch (err) {
+      log("warn", `usage: fetch failed: ${err instanceof Error ? err.message : err}`);
+      return null;
+    }
   }
+  return null;
 }
 
 // ── Header parsing (mid-stream updates) ─────────────────────────────
