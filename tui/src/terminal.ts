@@ -15,3 +15,24 @@ export const leave_alt = `${ESC}?1049l`;
 export const cursor_block = `${ESC}2 q`;       // steady block (vim normal)
 export const cursor_underline = `${ESC}4 q`;   // steady underline (vim pending operator)
 export const cursor_bar = `${ESC}6 q`;         // steady bar (vim insert / default)
+export const erase_to_eol = `${ESC}K`;         // erase to end of line (uses current bg)
+export const RESET = `${ESC}0m`;
+
+// ── Rendering primitives ──────────────────────────────────────────
+
+/**
+ * Apply a background color as a layer beneath line content.
+ *
+ * - Prefixes with bg so all content sits on it
+ * - Replaces every \x1b[0m reset with reset + re-apply bg
+ *   (so bg persists through styled spans)
+ * - Appends \x1b[K to fill to terminal edge
+ * - Resets at end so subsequent lines are clean
+ *
+ * Works for any line: text, empty, metadata, padding.
+ */
+export function applyLineBg(line: string, bg: string): string {
+  // Replace all resets with reset + bg re-apply
+  const patched = line.replaceAll(RESET, `${RESET}${bg}`);
+  return `${bg}${patched}${erase_to_eol}${RESET}`;
+}

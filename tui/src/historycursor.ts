@@ -413,13 +413,12 @@ const CURSOR_FG = "\x1b[38;2;0;0;0m";  // black text on cursor
  * column position. Walks the ANSI string, counting only visible
  * characters to find the right spot.
  *
- * After the cursor character, re-emits the line background + active
- * ANSI state so styled text (bold, colors, bg) continues correctly.
- *
- * @param lineBg - Optional background escape for the entire line.
- *                 Restored after cursor reset alongside text styles.
+ * After the cursor character, re-emits active text styles (bold,
+ * fg color, etc). Background restoration is handled by the caller
+ * via applyLineBg() — this function only cares about the cursor
+ * character and preserving text styling around it.
  */
-export function renderLineWithCursor(line: string, col: number, lineBg?: string): string {
+export function renderLineWithCursor(line: string, col: number): string {
   const plain = stripAnsi(line);
   if (plain.length === 0) {
     return `${CURSOR_FG}${theme.cursorBg} ${theme.reset}`;
@@ -431,7 +430,6 @@ export function renderLineWithCursor(line: string, col: number, lineBg?: string)
   let cursorRendered = false;
   // Track active ANSI escapes so we can restore after cursor reset
   let activeEscapes: string[] = [];
-  const bgRestore = lineBg ?? "";
 
   while (i < line.length) {
     if (line[i] === "\x1b") {
@@ -451,8 +449,8 @@ export function renderLineWithCursor(line: string, col: number, lineBg?: string)
     }
 
     if (visIdx === col) {
-      // Cursor: override fg/bg, then restore line bg + text styles after
-      parts.push(`${CURSOR_FG}${theme.cursorBg}${line[i]}${theme.reset}${bgRestore}${activeEscapes.join("")}`);
+      // Cursor: override fg/bg, then restore text styles after
+      parts.push(`${CURSOR_FG}${theme.cursorBg}${line[i]}${theme.reset}${activeEscapes.join("")}`);
       cursorRendered = true;
     } else {
       parts.push(line[i]);

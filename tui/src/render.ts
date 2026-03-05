@@ -12,7 +12,7 @@ import { renderTopbar } from "./topbar";
 import { renderSidebar, SIDEBAR_WIDTH } from "./sidebar";
 import { buildMessageLines } from "./conversation";
 import { getInputLines } from "./promptline";
-import { show_cursor, hide_cursor, cursor_block, cursor_underline, cursor_bar } from "./terminal";
+import { show_cursor, hide_cursor, cursor_block, cursor_underline, cursor_bar, applyLineBg } from "./terminal";
 import { theme } from "./theme";
 import { clampCursor, renderLineWithCursor } from "./historycursor";
 
@@ -128,9 +128,8 @@ export function render(state: RenderState): void {
     const lineIdx = viewStart + i;
     if (lineIdx < totalLines) {
       if (historyFocused && lineIdx === state.historyCursor.row) {
-        // Selected line: bg set, content drawn, \x1b[K fills remainder
-        const rendered = renderLineWithCursor(allLines[lineIdx], state.historyCursor.col, theme.historyLineBg);
-        out.push(`${theme.historyLineBg}${rendered}\x1b[K${theme.reset}`);
+        const withCursor = renderLineWithCursor(allLines[lineIdx], state.historyCursor.col);
+        out.push(applyLineBg(withCursor, theme.historyLineBg));
       } else {
         out.push(allLines[lineIdx]);
       }
