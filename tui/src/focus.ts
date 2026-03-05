@@ -12,6 +12,7 @@
 
 import type { KeyEvent } from "./input";
 import type { RenderState } from "./state";
+import type { Action } from "./keybinds";
 import { resolveAction } from "./keybinds";
 import {
   handleChatKey,
@@ -24,6 +25,7 @@ import {
 import { handleSidebarKey, handleSidebarAction, moveSelection } from "./sidebar";
 import { processKey, copyToClipboard, pasteFromClipboard, type VimContext } from "./vim";
 import { clampNormal } from "./vim/buffer";
+import * as hc from "./historycursor";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -165,6 +167,11 @@ function processVimKey(key: KeyEvent, state: RenderState): KeyResult | null {
 
 /** Handle an action produced by the vim engine. */
 function handleVimAction(action: string, state: RenderState): KeyResult {
+  // History cursor actions
+  if ((action as Action).startsWith("history_")) {
+    return handleHistoryCursorAction(action as Action, state);
+  }
+
   switch (action) {
     case "quit":
       return { type: "quit" };
@@ -201,6 +208,72 @@ function handleVimAction(action: string, state: RenderState): KeyResult {
     default:
       return { type: "handled" };
   }
+}
+
+// ── History cursor actions ────────────────────────────────────────
+
+function handleHistoryCursorAction(action: Action, state: RenderState): KeyResult {
+  const lines = state.historyLines;
+  const cur = state.historyCursor;
+
+  if (lines.length === 0) return { type: "handled" };
+
+  const lineLen = hc.stripAnsi(lines[cur.row] ?? "").length;
+
+  switch (action) {
+    case "history_left":    state.historyCursor = hc.charLeft(cur); break;
+    case "history_right":   state.historyCursor = hc.charRight(cur, lineLen); break;
+    case "history_up":      state.historyCursor = hc.lineUp(cur, lines); break;
+    case "history_down":    state.historyCursor = hc.lineDown(cur, lines); break;
+    case "history_w":       state.historyCursor = hc.wordForward(cur, lines); break;
+    case "history_b":       state.historyCursor = hc.wordBackward(cur, lines); break;
+    case "history_e":       state.historyCursor = hc.wordEnd(cur, lines); break;
+    case "history_W":       state.historyCursor = hc.wordForwardBig(cur, lines); break;
+    case "history_B":       state.historyCursor = hc.wordBackwardBig(cur, lines); break;
+    case "history_E":       state.historyCursor = hc.wordEndBig(cur, lines); break;
+    case "history_0":       state.historyCursor = hc.lineStart(cur); break;
+    case "history_dollar":  state.historyCursor = hc.lineEnd(cur, lineLen); break;
+    case "history_gg":      state.historyCursor = hc.bufferStart(); break;
+    case "history_G":       state.historyCursor = hc.bufferEnd(lines); break;
+    case "history_yy": {
+      const plain = hc.stripAnsi(lines[cur.row] ?? "");
+      if (plain) copyToClipboard(plain);
+      break;
+    }
+  }
+
+  // Auto-scroll to keep cursor visible
+  ensureCursorVisible(state);
+
+  return { type: "handled" };
+}
+
+/** Adjust scrollOffset so the cursor row is within the visible message area. */
+function ensureCursorVisible(state: RenderState): void {
+  const { totalLines, messageAreaHeight } = state.layout;
+  if (totalLines <= messageAreaHeight) {
+    state.scrollOffset = 0;
+    return;
+  }
+
+  const cursorRow = state.historyCursor.row;
+
+  // viewStart = totalLines - messageAreaHeight - scrollOffset
+  // visible range: [viewStart, viewStart + messageAreaHeight)
+  const viewStart = totalLines - messageAreaHeight - state.scrollOffset;
+  const viewEnd = viewStart + messageAreaHeight;
+
+  if (cursorRow < viewStart) {
+    // Cursor above visible area — scroll up
+    state.scrollOffset = totalLines - messageAreaHeight - cursorRow;
+  } else if (cursorRow >= viewEnd) {
+    // Cursor below visible area — scroll down
+    state.scrollOffset = totalLines - messageAreaHeight - (cursorRow - messageAreaHeight + 1);
+  }
+
+  // Clamp
+  const maxScroll = Math.max(0, totalLines - messageAreaHeight);
+  state.scrollOffset = Math.max(0, Math.min(state.scrollOffset, maxScroll));
 }
 
 /** Handle j/k vim actions in sidebar or history context. */

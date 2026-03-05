@@ -14,6 +14,7 @@ import { buildMessageLines } from "./conversation";
 import { getInputLines } from "./promptline";
 import { show_cursor, hide_cursor, cursor_block, cursor_underline, cursor_bar } from "./terminal";
 import { theme } from "./theme";
+import { stripAnsi, clampCursor } from "./historycursor";
 
 // ── ANSI positioning (non-color escapes) ────────────────────────────
 
@@ -93,6 +94,10 @@ export function render(state: RenderState): void {
   const allLines = buildMessageLines(state, chatW);
   const totalLines = allLines.length;
 
+  // Cache rendered lines for history cursor navigation
+  state.historyLines = allLines;
+  state.historyCursor = clampCursor(state.historyCursor, allLines);
+
   // Pin scroll position: if user is scrolled up and content changes,
   // adjust offset so the viewport stays on the same content.
   const prevTotal = state.layout.totalLines;
@@ -122,7 +127,11 @@ export function render(state: RenderState): void {
     out.push(move_to(row, chatCol));
     const lineIdx = viewStart + i;
     if (lineIdx < totalLines) {
-      out.push(allLines[lineIdx]);
+      if (historyFocused && lineIdx === state.historyCursor.row) {
+        out.push(renderLineWithCursor(allLines[lineIdx], state.historyCursor.col));
+      } else {
+        out.push(allLines[lineIdx]);
+      }
     }
   }
 
@@ -170,7 +179,7 @@ export function render(state: RenderState): void {
     out.push(move_to(row, chatCol) + statusLines[i]);
   }
 
-  // ── Cursor: visible only when prompt is focused ────────────────
+  // ── Cursor ─────────────────────────────────────────────────────
   if (promptFocused) {
     const cursorScreenRow = firstInputRow + cursorLine;
     out.push(move_to(cursorScreenRow, chatCol + promptLen + cursorCol));
@@ -182,8 +191,63 @@ export function render(state: RenderState): void {
     );
     out.push(show_cursor);
   } else {
+    // History cursor is rendered inline (reverse video) — hide hardware cursor
     out.push(hide_cursor);
   }
 
   process.stdout.write(out.join(""));
+}
+
+// ── History cursor rendering ─────────────────────────────────────
+
+const REVERSE = "\x1b[7m";
+const NO_REVERSE = "\x1b[27m";
+
+/**
+ * Render a line with a reverse-video block cursor at the given
+ * visible column position. Walks through the ANSI string,
+ * counting only visible characters to find the right spot.
+ */
+function renderLineWithCursor(line: string, col: number): string {
+  const plain = stripAnsi(line);
+  if (plain.length === 0) {
+    // Empty line — show cursor as reverse space
+    return `${REVERSE} ${NO_REVERSE}`;
+  }
+
+  // Walk the ANSI string, map visible char positions to byte offsets
+  const parts: string[] = [];
+  let visIdx = 0;
+  let i = 0;
+  let cursorRendered = false;
+
+  while (i < line.length) {
+    // Check for ANSI escape
+    if (line[i] === "\x1b") {
+      // Find end of escape sequence
+      const match = line.slice(i).match(/^\x1b(?:\[[0-9;]*[A-Za-z]|\]8;[^;]*;[^\x1b]*\x1b\\)/);
+      if (match) {
+        parts.push(match[0]);
+        i += match[0].length;
+        continue;
+      }
+    }
+
+    // Visible character
+    if (visIdx === col) {
+      parts.push(`${REVERSE}${line[i]}${NO_REVERSE}`);
+      cursorRendered = true;
+    } else {
+      parts.push(line[i]);
+    }
+    visIdx++;
+    i++;
+  }
+
+  // Cursor past end of line — append reverse space
+  if (!cursorRendered) {
+    parts.push(`${REVERSE} ${NO_REVERSE}`);
+  }
+
+  return parts.join("");
 }

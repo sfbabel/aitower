@@ -58,12 +58,29 @@ const KEYMAP: KeymapEntry[] = [
   { mode: "normal", context: "prompt", key: "p",  command: { type: "standalone", name: "paste_after" } },
   { mode: "normal", context: "prompt", key: "P",  command: { type: "standalone", name: "paste_before" } },
 
-  // ── Normal mode: history ─────────────────────────────────────────
+  // ── Normal mode: history (cursor navigation) ─────────────────────
 
-  { mode: "normal", context: "history", key: "j",  command: { type: "action", action: "nav_down" } },
-  { mode: "normal", context: "history", key: "k",  command: { type: "action", action: "nav_up" } },
-  { mode: "normal", context: "history", key: "gg", command: { type: "action", action: "scroll_top" } },
-  { mode: "normal", context: "history", key: "G",  command: { type: "action", action: "scroll_bottom" } },
+  // Motions (same as prompt — move history cursor)
+  { mode: "normal", context: "history", key: "h",  command: { type: "action", action: "history_left" } },
+  { mode: "normal", context: "history", key: "l",  command: { type: "action", action: "history_right" } },
+  { mode: "normal", context: "history", key: "j",  command: { type: "action", action: "history_down" } },
+  { mode: "normal", context: "history", key: "k",  command: { type: "action", action: "history_up" } },
+  { mode: "normal", context: "history", key: "w",  command: { type: "action", action: "history_w" } },
+  { mode: "normal", context: "history", key: "b",  command: { type: "action", action: "history_b" } },
+  { mode: "normal", context: "history", key: "e",  command: { type: "action", action: "history_e" } },
+  { mode: "normal", context: "history", key: "W",  command: { type: "action", action: "history_W" } },
+  { mode: "normal", context: "history", key: "B",  command: { type: "action", action: "history_B" } },
+  { mode: "normal", context: "history", key: "E",  command: { type: "action", action: "history_E" } },
+  { mode: "normal", context: "history", key: "0",  command: { type: "action", action: "history_0" } },
+  { mode: "normal", context: "history", key: "$",  command: { type: "action", action: "history_dollar" } },
+  { mode: "normal", context: "history", key: "gg", command: { type: "action", action: "history_gg" } },
+  { mode: "normal", context: "history", key: "G",  command: { type: "action", action: "history_G" } },
+
+  // Yank
+  { mode: "normal", context: "history", key: "y",  command: { type: "operator", name: "yank" } },
+  { mode: "normal", context: "history", key: "yy", command: { type: "action", action: "history_yy" } },
+
+  // Mode changes
   { mode: "normal", context: "history", key: "i",  command: { type: "mode_change", mode: "insert" } },
   { mode: "normal", context: "history", key: "a",  command: { type: "mode_change", mode: "insert" } },
 

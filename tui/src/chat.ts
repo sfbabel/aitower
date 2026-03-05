@@ -10,6 +10,7 @@ import type { KeyEvent } from "./input";
 import type { RenderState } from "./state";
 import { resolveAction } from "./keybinds";
 import { handlePromptKey } from "./promptline";
+import { placeAtBottom } from "./historycursor";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -38,6 +39,9 @@ function handlePromptFocused(key: KeyEvent, state: RenderState): ChatKeyResult {
   // Ctrl+N toggles: prompt → history
   if (action === "focus_history") {
     state.chatFocus = "history";
+    state.vim.mode = "normal";
+    // Place cursor at bottom of visible content
+    state.historyCursor = placeAtBottom(state.historyLines);
     return { type: "handled" };
   }
 
@@ -69,6 +73,7 @@ function handleHistoryFocused(key: KeyEvent, state: RenderState): ChatKeyResult 
     case "focus_history":
       // i/a → prompt, Ctrl+N toggles back to prompt
       state.chatFocus = "prompt";
+      state.vim.mode = "insert";
       return { type: "handled" };
 
     case "nav_up":

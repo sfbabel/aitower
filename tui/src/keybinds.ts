@@ -53,7 +53,23 @@ export type Action =
   | "toggle_tool_output"
   // Sidebar navigation (from any panel)
   | "sidebar_next"
-  | "sidebar_prev";
+  | "sidebar_prev"
+  // History cursor motions
+  | "history_left"
+  | "history_right"
+  | "history_up"
+  | "history_down"
+  | "history_w"
+  | "history_b"
+  | "history_e"
+  | "history_W"
+  | "history_B"
+  | "history_E"
+  | "history_0"
+  | "history_dollar"
+  | "history_gg"
+  | "history_G"
+  | "history_yy";
 
 // ── Keybind map ─────────────────────────────────────────────────────
 

@@ -13,6 +13,8 @@ import type { SidebarState } from "./sidebar";
 import { createSidebarState } from "./sidebar";
 import type { VimState } from "./vim";
 import { createVimState } from "./vim";
+import type { HistoryCursor } from "./historycursor";
+import { createHistoryCursor } from "./historycursor";
 
 /** Cached layout values — set by the renderer, read by scroll functions. */
 export interface LayoutCache {
@@ -53,6 +55,10 @@ export interface RenderState {
   toolRegistry: ToolDisplayInfo[];
   /** Whether tool result output is visible. Toggled with Ctrl+O. */
   showToolOutput: boolean;
+  /** Cursor position in chat history (active when chatFocus === "history"). */
+  historyCursor: HistoryCursor;
+  /** Cached rendered lines for history cursor navigation (ANSI included). */
+  historyLines: string[];
 }
 
 /** Streaming state is derived from pendingAI — no separate boolean. */
@@ -82,5 +88,7 @@ export function createInitialState(): RenderState {
     errorBuffer: [],
     toolRegistry: [],
     showToolOutput: false,
+    historyCursor: createHistoryCursor(),
+    historyLines: [],
   };
 }
