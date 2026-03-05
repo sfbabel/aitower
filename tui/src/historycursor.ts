@@ -329,22 +329,22 @@ export function scrollFullPageWithCursor(state: RenderState, dir: number): void 
 /**
  * Scroll viewport and move cursor by `lines` rows.
  * Positive = up (towards older), negative = down (towards newer).
- * Cursor clamps to buffer bounds; viewport follows.
+ * Cursor always moves (clamped to buffer bounds), viewport follows.
  */
 function scrollWithCursor(state: RenderState, lines: number): void {
-  const { totalLines, messageAreaHeight } = state.layout;
-  if (totalLines <= messageAreaHeight) return;
+  const totalLines = state.historyLines.length;
+  if (totalLines === 0) return;
 
-  const maxOff = Math.max(0, totalLines - messageAreaHeight);
-
-  // Move cursor
+  // Always move cursor, even if viewport can't scroll further
   const newRow = Math.max(0, Math.min(state.historyCursor.row - lines, totalLines - 1));
   state.historyCursor = clampCursor({ row: newRow, col: state.historyCursor.col }, state.historyLines);
 
-  // Move viewport by same amount
+  // Move viewport by same amount (clamped)
+  const { messageAreaHeight } = state.layout;
+  const maxOff = Math.max(0, totalLines - messageAreaHeight);
   state.scrollOffset = Math.max(0, Math.min(state.scrollOffset + lines, maxOff));
 
-  // Ensure cursor is visible (edge case: cursor moved more than viewport)
+  // Ensure cursor is visible (cursor may have moved past viewport)
   ensureCursorVisible(state);
 }
 
@@ -354,9 +354,10 @@ function scrollWithCursor(state: RenderState, lines: number): void {
  * `dir`: positive = up (Ctrl+Y), negative = down (Ctrl+E).
  */
 export function scrollLineWithStickyCursor(state: RenderState, dir: number): void {
-  const { totalLines, messageAreaHeight } = state.layout;
-  if (totalLines <= messageAreaHeight) return;
+  const totalLines = state.historyLines.length;
+  if (totalLines === 0) return;
 
+  const { messageAreaHeight } = state.layout;
   const maxOff = Math.max(0, totalLines - messageAreaHeight);
   const oldOffset = state.scrollOffset;
 
@@ -364,7 +365,12 @@ export function scrollLineWithStickyCursor(state: RenderState, dir: number): voi
   state.scrollOffset = Math.max(0, Math.min(oldOffset + dir, maxOff));
 
   const actualScroll = state.scrollOffset - oldOffset;
-  if (actualScroll === 0) return;
+  if (actualScroll === 0) {
+    // Viewport can't scroll further — move cursor alone (vim behavior)
+    const newRow = Math.max(0, Math.min(state.historyCursor.row - dir, totalLines - 1));
+    state.historyCursor = clampCursor({ row: newRow, col: state.historyCursor.col }, state.historyLines);
+    return;
+  }
 
   // Cursor stays on same screen row → moves in buffer by scroll amount
   const newRow = state.historyCursor.row - actualScroll;
