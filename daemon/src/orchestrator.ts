@@ -14,7 +14,7 @@ import { buildSystemPrompt } from "./system";
 import { getToolDefs, buildExecutor, summarizeTool } from "./tools/registry";
 import * as convStore from "./conversations";
 import type { DaemonServer, ConnectedClient } from "./server";
-import type { ApiMessage, ApiContentBlock } from "./messages";
+import type { StoredMessage } from "./messages";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -62,13 +62,13 @@ export async function orchestrateSendMessage(
 
   server.sendToSubscribers(convId, { type: "streaming_started", convId, model: conv.model });
 
-  const apiMessages: ApiMessage[] = conv.messages.map((m) => ({
+  const apiMessages = conv.messages.map((m) => ({
     role: m.role,
     content: m.content,
   }));
 
   // Track partial content for persistence on interruption
-  const partialContent: ApiContentBlock[] = [];
+  const partialContent: import("./messages").ApiContentBlock[] = [];
   let partialTokens = 0;
 
   const callbacks: AgentCallbacks = {
@@ -147,16 +147,26 @@ export async function orchestrateSendMessage(
 
     const endedAt = Date.now();
 
-    conv.messages.push({
-      role: "assistant",
-      content: result.apiContent,
-      metadata: {
+    // Convert ApiMessage[] → StoredMessage[], stamp metadata on last assistant
+    const storedMessages: StoredMessage[] = result.newMessages.map(m => ({
+      role: m.role,
+      content: m.content,
+      metadata: null,
+    }));
+    const lastAssistant = [...storedMessages].reverse().find(m => m.role === "assistant");
+    if (lastAssistant) {
+      lastAssistant.metadata = {
         startedAt,
         endedAt,
         model: conv.model,
         tokens: result.tokens,
-      },
-    });
+      };
+    }
+
+    // Push the actual conversation messages — preserves the full
+    // multi-turn structure (assistant → user[tool_result] → assistant → ...)
+    conv.messages.push(...storedMessages);
+
     server.sendToSubscribers(convId, {
       type: "message_complete",
       convId,

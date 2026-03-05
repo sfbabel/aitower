@@ -196,11 +196,17 @@ export function getDisplayData(id: string): ConversationDisplayData | null {
             summary: s.detail || s.label,
           });
         } else if (c.type === "tool_result") {
+          const raw = c.content as string | unknown[];
+          const output = typeof raw === "string"
+            ? raw
+            : Array.isArray(raw)
+              ? (raw as any[]).filter((p: any) => p.type === "text").map((p: any) => p.text).join("\n")
+              : String(raw ?? "");
           blocks.push({
             type: "tool_result",
             toolCallId: c.tool_use_id,
             toolName: "",
-            output: c.content,
+            output,
             isError: c.is_error ?? false,
           });
         }

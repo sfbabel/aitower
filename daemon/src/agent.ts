@@ -11,7 +11,7 @@
 
 import { streamMessage, type ApiToolCall } from "./api";
 import { log } from "./log";
-import type { ModelId, Block, ToolCallBlock, ToolResultBlock, ApiMessage, ApiContentBlock } from "./messages";
+import type { ModelId, Block, ToolCallBlock, ToolResultBlock, ApiMessage } from "./messages";
 
 // ── Callbacks ───────────────────────────────────────────────────────
 
@@ -55,11 +55,12 @@ export type ToolExecutor = (calls: ApiToolCall[]) => Promise<ToolExecResult[]>;
 // ── Result ──────────────────────────────────────────────────────────
 
 export interface AgentResult {
-  /** All blocks produced during this AI message, in order. */
+  /** All blocks produced during this AI message, in order (for TUI display). */
   blocks: Block[];
-  /** Full API content blocks with signatures — for persisting and replaying. */
-  apiContent: ApiContentBlock[];
-  model: ModelId;
+  /** The actual API messages added during this turn — correct roles and structure.
+   *  For a tool-use turn this is: [assistant, user(tool_result), assistant, user(tool_result), assistant].
+   *  For a simple response: [assistant]. Persisted as-is — replays correctly. */
+  newMessages: ApiMessage[];
   tokens: number;
   durationMs: number;
 }
@@ -90,7 +91,7 @@ export async function runAgentLoop(
   } = {},
 ): Promise<AgentResult> {
   const allBlocks: Block[] = [];
-  const allApiContent: ApiContentBlock[] = [];
+  const newMessages: ApiMessage[] = [];
   const messages = [...initialMessages];
   const startTime = Date.now();
   let totalOutputTokens = 0;
@@ -142,15 +143,9 @@ export async function runAgentLoop(
     for (const tc of result.toolCalls) {
       assistantContent.push({ type: "tool_use", id: tc.id, name: tc.name, input: tc.input });
     }
-    // Accumulate for the final result (thinking + text, with signatures)
-    for (const block of result.blocks) {
-      if (block.type === "thinking") {
-        allApiContent.push({ type: "thinking", thinking: block.text, signature: block.signature });
-      } else {
-        allApiContent.push({ type: "text", text: block.text });
-      }
-    }
-    messages.push({ role: "assistant", content: assistantContent });
+    const assistantMsg: ApiMessage = { role: "assistant", content: assistantContent };
+    messages.push(assistantMsg);
+    newMessages.push(assistantMsg);
 
     // ── No tool calls → done ──────────────────────────────────────
     if (result.toolCalls.length === 0) {
@@ -215,14 +210,15 @@ export async function runAgentLoop(
       }
     }
 
-    messages.push({ role: "user", content: toolResultContent });
+    const toolResultMsg: ApiMessage = { role: "user", content: toolResultContent };
+    messages.push(toolResultMsg);
+    newMessages.push(toolResultMsg);
     // Continue loop → next API call with tool results
   }
 
   return {
     blocks: allBlocks,
-    apiContent: allApiContent,
-    model,
+    newMessages,
     tokens: totalOutputTokens,
     durationMs: Date.now() - startTime,
   };
