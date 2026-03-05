@@ -38,6 +38,18 @@ function highlightPromptLine(
   maxWidth: number,
   isLinewise: boolean,
 ): string {
+  // For linewise: expand selection to full line boundaries in the buffer
+  let effStart = selStart;
+  let effEnd = selEnd;
+  if (isLinewise) {
+    // Find start of line containing selStart
+    const ls = buffer.lastIndexOf("\n", effStart - 1);
+    effStart = ls === -1 ? 0 : ls + 1;
+    // Find end of line containing selEnd
+    const le = buffer.indexOf("\n", effEnd);
+    effEnd = le === -1 ? buffer.length - 1 : le;
+  }
+
   // Compute the buffer offset for this wrapped line
   const bufferLines = buffer.split("\n");
   let offset = 0;
@@ -51,9 +63,9 @@ function highlightPromptLine(
       const lineStart = offset + chunkIdx * maxWidth;
       const lineEnd = lineStart + line.length - 1;
 
-      if (isLinewise || (selStart <= lineEnd && selEnd >= lineStart)) {
-        const colStart = isLinewise ? 0 : Math.max(0, selStart - lineStart);
-        const colEnd = isLinewise ? line.length - 1 : Math.min(line.length - 1, selEnd - lineStart);
+      if (effStart <= lineEnd && effEnd >= lineStart) {
+        const colStart = isLinewise ? 0 : Math.max(0, effStart - lineStart);
+        const colEnd = isLinewise ? line.length - 1 : Math.min(line.length - 1, effEnd - lineStart);
         return renderLineWithSelection(line, colStart, colEnd);
       }
       return line;
