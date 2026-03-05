@@ -65,6 +65,18 @@ export interface AgentResult {
   durationMs: number;
 }
 
+/**
+ * Mutable state exposed to the caller for crash/abort recovery.
+ * The orchestrator reads completedMessages on abort to persist
+ * finished rounds without maintaining a parallel tracker.
+ */
+export interface AgentState {
+  /** Messages from fully completed rounds (not the in-flight one). */
+  completedMessages: ApiMessage[];
+  /** Accumulated output tokens so far. */
+  tokens: number;
+}
+
 // ── Tool summarizer ─────────────────────────────────────────────────
 
 /** Injected function that produces a display summary for a tool call. */
@@ -88,6 +100,8 @@ export async function runAgentLoop(
     summarizer?: ToolSummarizer;
     maxTokens?: number;
     tools?: unknown[];
+    /** Mutable state for abort recovery — caller reads on catch. */
+    state?: AgentState;
   } = {},
 ): Promise<AgentResult> {
   const allBlocks: Block[] = [];
@@ -95,6 +109,13 @@ export async function runAgentLoop(
   const messages = [...initialMessages];
   const startTime = Date.now();
   let totalOutputTokens = 0;
+
+  // Expose state for abort recovery
+  const state = options.state;
+  if (state) {
+    state.completedMessages = [];
+    state.tokens = 0;
+  }
 
   for (let round = 0; ; round++) {
     log("info", `agent: round ${round}, messages=${messages.length}, model=${model}`);
@@ -213,6 +234,12 @@ export async function runAgentLoop(
     const toolResultMsg: ApiMessage = { role: "user", content: toolResultContent };
     messages.push(toolResultMsg);
     newMessages.push(toolResultMsg);
+
+    // Update recovery state — this round is fully complete
+    if (state) {
+      state.completedMessages = [...newMessages];
+      state.tokens = totalOutputTokens;
+    }
     // Continue loop → next API call with tool results
   }
 

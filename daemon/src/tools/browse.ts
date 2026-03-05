@@ -7,11 +7,11 @@
  */
 
 import type { Tool, ToolResult, ToolSummary } from "./types";
+import { cap } from "./util";
 import { log } from "../log";
 
 // ── Constants ──────────────────────────────────────────────────────
 
-const MAX_OUTPUT_CHARS = 30_000;
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
 // ── Cache ──────────────────────────────────────────────────────────
@@ -23,12 +23,6 @@ function cleanCache(): void {
   for (const [key, entry] of fetchCache) {
     if (now - entry.ts > CACHE_TTL) fetchCache.delete(key);
   }
-}
-
-function cap(text: string): string {
-  if (text.length <= MAX_OUTPUT_CHARS) return text;
-  return text.slice(0, MAX_OUTPUT_CHARS) +
-    `\n\n... (truncated, showing ${MAX_OUTPUT_CHARS} of ${text.length} characters)`;
 }
 
 // ── HTML → Markdown ────────────────────────────────────────────────

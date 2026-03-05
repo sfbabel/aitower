@@ -7,13 +7,13 @@
  */
 
 import type { Tool, ToolResult, ToolSummary } from "./types";
+import { cap } from "./util";
 import { log } from "../log";
 
 // ── Constants ──────────────────────────────────────────────────────
 
 const DEFAULT_LINE_LIMIT = 2000;
 const MAX_LINE_CHARS = 2000;
-const MAX_OUTPUT_CHARS = 30_000;
 
 // ── Image handling ─────────────────────────────────────────────────
 
@@ -48,11 +48,6 @@ function formatMB(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1);
 }
 
-function cap(text: string): string {
-  if (text.length <= MAX_OUTPUT_CHARS) return text;
-  return text.slice(0, MAX_OUTPUT_CHARS) +
-    `\n... output truncated (showed ${MAX_OUTPUT_CHARS} of ${text.length} characters)`;
-}
 
 // ── Image compression (via ImageMagick) ────────────────────────────
 

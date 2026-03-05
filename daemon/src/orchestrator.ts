@@ -9,7 +9,7 @@
 
 import { log } from "./log";
 import { loadAuth } from "./store";
-import { runAgentLoop, type AgentCallbacks } from "./agent";
+import { runAgentLoop, type AgentCallbacks, type AgentState } from "./agent";
 import { buildSystemPrompt } from "./system";
 import { getToolDefs, buildExecutor, summarizeTool } from "./tools/registry";
 import * as convStore from "./conversations";
@@ -67,9 +67,10 @@ export async function orchestrateSendMessage(
     content: m.content,
   }));
 
-  // Track partial content for persistence on interruption
+  // Agent state for abort recovery — the agent populates completedMessages
+  // after each full round. partialContent only tracks the in-flight round.
+  const agentState: AgentState = { completedMessages: [], tokens: 0 };
   const partialContent: import("./messages").ApiContentBlock[] = [];
-  let partialTokens = 0;
 
   const callbacks: AgentCallbacks = {
     onBlockStart(blockType) {
@@ -96,7 +97,6 @@ export async function orchestrateSendMessage(
       convStore.onChunk(convId);
     },
     onSignature(signature) {
-      // Find the last thinking block and stamp the signature
       for (let i = partialContent.length - 1; i >= 0; i--) {
         if (partialContent[i].type === "thinking") {
           (partialContent[i] as { type: "thinking"; thinking: string; signature: string }).signature = signature;
@@ -123,7 +123,6 @@ export async function orchestrateSendMessage(
       });
     },
     onTokensUpdate(tokens) {
-      partialTokens = tokens;
       server.sendToSubscribers(convId, { type: "tokens_update", convId, tokens });
     },
     onContextUpdate(contextTokens) {
@@ -143,6 +142,7 @@ export async function orchestrateSendMessage(
         const s = summarizeTool(name, input);
         return s.detail || s.label;
       },
+      state: agentState,
     });
 
     const endedAt = Date.now();
@@ -190,9 +190,18 @@ export async function orchestrateSendMessage(
       log("info", `orchestrator: stream interrupted for ${convId}`);
     }
 
-    // Save partial response if any content was received.
-    // Strip thinking blocks with missing/incomplete signatures —
-    // the API rejects them on replay.
+    // Persist completed rounds from the agent (full tool-use exchanges).
+    if (agentState.completedMessages.length > 0) {
+      const stored: StoredMessage[] = agentState.completedMessages.map(m => ({
+        role: m.role,
+        content: m.content,
+        metadata: null,
+      }));
+      conv.messages.push(...stored);
+    }
+
+    // Persist the in-flight partial response (current round's streamed content).
+    // Strip thinking blocks with missing signatures — API rejects them on replay.
     const safeContent = partialContent.filter(b => {
       if (b.type === "thinking") return b.signature && b.signature.length > 0;
       return true;
@@ -208,7 +217,7 @@ export async function orchestrateSendMessage(
           startedAt,
           endedAt: Date.now(),
           model: conv.model,
-          tokens: partialTokens,
+          tokens: agentState.tokens,
         },
       });
     }

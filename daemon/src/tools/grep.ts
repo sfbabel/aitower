@@ -6,18 +6,12 @@
  */
 
 import type { Tool, ToolResult, ToolSummary } from "./types";
+import { cap } from "./util";
 import { log } from "../log";
 
 // ── Constants ──────────────────────────────────────────────────────
 
-const MAX_OUTPUT_CHARS = 30_000;
 const EXCLUDED_DIRS = [".git", ".svn", ".hg", ".bzr"];
-
-function cap(text: string): string {
-  if (text.length <= MAX_OUTPUT_CHARS) return text;
-  return text.slice(0, MAX_OUTPUT_CHARS) +
-    `\n... output truncated (showed ${MAX_OUTPUT_CHARS} of ${text.length} characters)`;
-}
 
 // ── Execution ──────────────────────────────────────────────────────
 
