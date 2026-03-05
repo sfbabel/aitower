@@ -331,18 +331,19 @@ export function ensureCursorVisible(state: RenderState): void {
 
 // ── Rendering ──────────────────────────────────────────────────────
 
-const REVERSE = "\x1b[7m";
-const NO_REVERSE = "\x1b[27m";
+import { theme } from "./theme";
+
+const CURSOR_FG = "\x1b[38;2;0;0;0m";  // black text on cursor
 
 /**
- * Render a line with a reverse-video block cursor at the given
- * visible column position. Walks through the ANSI string,
- * counting only visible characters to find the right spot.
+ * Render a line with a themed block cursor at the given visible
+ * column position. Walks the ANSI string, counting only visible
+ * characters to find the right spot.
  */
 export function renderLineWithCursor(line: string, col: number): string {
   const plain = stripAnsi(line);
   if (plain.length === 0) {
-    return `${REVERSE} ${NO_REVERSE}`;
+    return `${CURSOR_FG}${theme.cursorBg} ${theme.reset}`;
   }
 
   const parts: string[] = [];
@@ -361,7 +362,7 @@ export function renderLineWithCursor(line: string, col: number): string {
     }
 
     if (visIdx === col) {
-      parts.push(`${REVERSE}${line[i]}${NO_REVERSE}`);
+      parts.push(`${CURSOR_FG}${theme.cursorBg}${line[i]}${theme.reset}`);
       cursorRendered = true;
     } else {
       parts.push(line[i]);
@@ -371,7 +372,7 @@ export function renderLineWithCursor(line: string, col: number): string {
   }
 
   if (!cursorRendered) {
-    parts.push(`${REVERSE} ${NO_REVERSE}`);
+    parts.push(`${CURSOR_FG}${theme.cursorBg} ${theme.reset}`);
   }
 
   return parts.join("");

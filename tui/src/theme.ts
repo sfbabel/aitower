@@ -40,6 +40,7 @@ export interface Theme {
   userBg: string;         // User message bubble
   sidebarBg: string;      // Sidebar body
   sidebarSelBg: string;   // Sidebar selected item
+  cursorBg: string;       // Inline cursor (history, visual mode)
 
   // Border colors
   borderFocused: string;  // Focused panel border
