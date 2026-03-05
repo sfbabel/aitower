@@ -307,6 +307,78 @@ export function applyHistoryAction(action: Action, state: RenderState): boolean 
   return true;
 }
 
+// ── Cursor-aware scrolling (vim-style) ─────────────────────────────
+
+/**
+ * Ctrl+U / Ctrl+D — scroll half page AND move cursor by the same amount.
+ * If there aren't enough lines, cursor takes the remainder.
+ * `dir`: positive = up, negative = down.
+ */
+export function scrollHalfPageWithCursor(state: RenderState, dir: number): void {
+  const amount = Math.floor(state.layout.messageAreaHeight / 2);
+  scrollWithCursor(state, dir * amount);
+}
+
+/**
+ * Ctrl+B / Ctrl+F — scroll full page AND move cursor by the same amount.
+ */
+export function scrollFullPageWithCursor(state: RenderState, dir: number): void {
+  scrollWithCursor(state, dir * state.layout.messageAreaHeight);
+}
+
+/**
+ * Scroll viewport and move cursor by `lines` rows.
+ * Positive = up (towards older), negative = down (towards newer).
+ * Cursor clamps to buffer bounds; viewport follows.
+ */
+function scrollWithCursor(state: RenderState, lines: number): void {
+  const { totalLines, messageAreaHeight } = state.layout;
+  if (totalLines <= messageAreaHeight) return;
+
+  const maxOff = Math.max(0, totalLines - messageAreaHeight);
+
+  // Move cursor
+  const newRow = Math.max(0, Math.min(state.historyCursor.row - lines, totalLines - 1));
+  state.historyCursor = clampCursor({ row: newRow, col: state.historyCursor.col }, state.historyLines);
+
+  // Move viewport by same amount
+  state.scrollOffset = Math.max(0, Math.min(state.scrollOffset + lines, maxOff));
+
+  // Ensure cursor is visible (edge case: cursor moved more than viewport)
+  ensureCursorVisible(state);
+}
+
+/**
+ * Ctrl+E / Ctrl+Y — scroll viewport by 1 line, cursor stays on same
+ * screen row (sticks). If cursor would go off-screen, clamp to edge.
+ * `dir`: positive = up (Ctrl+Y), negative = down (Ctrl+E).
+ */
+export function scrollLineWithStickyCursor(state: RenderState, dir: number): void {
+  const { totalLines, messageAreaHeight } = state.layout;
+  if (totalLines <= messageAreaHeight) return;
+
+  const maxOff = Math.max(0, totalLines - messageAreaHeight);
+  const oldOffset = state.scrollOffset;
+
+  // Move viewport
+  state.scrollOffset = Math.max(0, Math.min(oldOffset + dir, maxOff));
+
+  const actualScroll = state.scrollOffset - oldOffset;
+  if (actualScroll === 0) return;
+
+  // Cursor stays on same screen row → moves in buffer by scroll amount
+  const newRow = state.historyCursor.row - actualScroll;
+  const viewStart = totalLines - messageAreaHeight - state.scrollOffset;
+  const viewEnd = viewStart + messageAreaHeight - 1;
+
+  // Clamp to visible area
+  const clampedRow = Math.max(viewStart, Math.min(newRow, viewEnd));
+  state.historyCursor = clampCursor(
+    { row: clampedRow, col: state.historyCursor.col },
+    state.historyLines,
+  );
+}
+
 /** Adjust scrollOffset so the cursor row is within the visible message area. */
 export function ensureCursorVisible(state: RenderState): void {
   const { totalLines, messageAreaHeight } = state.layout;

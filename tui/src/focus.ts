@@ -25,7 +25,10 @@ import {
 import { handleSidebarKey, handleSidebarAction, moveSelection } from "./sidebar";
 import { processKey, copyToClipboard, pasteFromClipboard, type VimContext } from "./vim";
 import { clampNormal } from "./vim/buffer";
-import { applyHistoryAction, stripAnsi, ensureCursorVisible } from "./historycursor";
+import {
+  applyHistoryAction, stripAnsi, ensureCursorVisible,
+  scrollHalfPageWithCursor, scrollFullPageWithCursor, scrollLineWithStickyCursor,
+} from "./historycursor";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -71,14 +74,16 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
       moveSelection(state.sidebar, action === "sidebar_next" ? 1 : -1);
       return { type: "handled" };
     }
-    case "scroll_line_up":   handleScroll(state, scrollLineUp);   return { type: "handled" };
-    case "scroll_line_down": handleScroll(state, scrollLineDown); return { type: "handled" };
-    case "scroll_half_up":   handleScroll(state, scrollHalfUp);   return { type: "handled" };
-    case "scroll_half_down": handleScroll(state, scrollHalfDown); return { type: "handled" };
-    case "scroll_page_up":   handleScroll(state, scrollPageUp);   return { type: "handled" };
-    case "scroll_page_down": handleScroll(state, scrollPageDown); return { type: "handled" };
-    case "scroll_top":       handleScroll(state, scrollToTop);    return { type: "handled" };
-    case "scroll_bottom":    handleScroll(state, scrollToBottom); return { type: "handled" };
+    case "scroll_line_up":
+    case "scroll_line_down":
+    case "scroll_half_up":
+    case "scroll_half_down":
+    case "scroll_page_up":
+    case "scroll_page_down":
+    case "scroll_top":
+    case "scroll_bottom":
+      handleScrollAction(action, state);
+      return { type: "handled" };
     case "toggle_tool_output":
       state.showToolOutput = !state.showToolOutput;
       return { type: "handled" };
@@ -266,13 +271,37 @@ function clampCursorNormal(state: RenderState): void {
 
 // ── Scroll dispatch ────────────────────────────────────────────────
 
-/** Route scroll to the focused scrollable. */
-function handleScroll(state: RenderState, scrollFn: (state: RenderState) => void): void {
-  if (state.panelFocus === "sidebar") {
-    // TODO: scroll sidebar selection when needed
-    scrollFn(state); // falls through to chat history for now
-  } else {
-    scrollFn(state);
+/**
+ * Route scroll actions. When history cursor is active, uses vim-style
+ * cursor-aware scrolling. Otherwise falls back to viewport-only scroll.
+ */
+function handleScrollAction(action: Action, state: RenderState): void {
+  const inHistory = state.panelFocus === "chat" && state.chatFocus === "history";
+
+  if (inHistory) {
+    // Vim-style: cursor moves with scroll
+    switch (action) {
+      case "scroll_line_up":   scrollLineWithStickyCursor(state, 1);  return;
+      case "scroll_line_down": scrollLineWithStickyCursor(state, -1); return;
+      case "scroll_half_up":   scrollHalfPageWithCursor(state, 1);    return;
+      case "scroll_half_down": scrollHalfPageWithCursor(state, -1);   return;
+      case "scroll_page_up":   scrollFullPageWithCursor(state, 1);    return;
+      case "scroll_page_down": scrollFullPageWithCursor(state, -1);   return;
+      case "scroll_top":       scrollToTop(state); ensureCursorVisible(state); return;
+      case "scroll_bottom":    scrollToBottom(state); ensureCursorVisible(state); return;
+    }
+  }
+
+  // Viewport-only (prompt focused, sidebar, etc.)
+  switch (action) {
+    case "scroll_line_up":   scrollLineUp(state);   break;
+    case "scroll_line_down": scrollLineDown(state);  break;
+    case "scroll_half_up":   scrollHalfUp(state);    break;
+    case "scroll_half_down": scrollHalfDown(state);  break;
+    case "scroll_page_up":   scrollPageUp(state);    break;
+    case "scroll_page_down": scrollPageDown(state);  break;
+    case "scroll_top":       scrollToTop(state);     break;
+    case "scroll_bottom":    scrollToBottom(state);  break;
   }
 }
 
