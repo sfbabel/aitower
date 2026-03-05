@@ -12,6 +12,7 @@ import { read } from "./read";
 import { write } from "./write";
 import { glob } from "./glob";
 import { grep } from "./grep";
+import { edit } from "./edit";
 
 // ── Registry ───────────────────────────────────────────────────────
 
@@ -21,6 +22,7 @@ const TOOLS: Tool[] = [
   write,
   glob,
   grep,
+  edit,
 ];
 
 const toolMap = new Map<string, Tool>(TOOLS.map(t => [t.name, t]));
