@@ -43,6 +43,7 @@ export interface ToolExecResult {
   toolName: string;
   output: string;
   isError: boolean;
+  image?: { mediaType: string; base64: string };
 }
 
 /**
@@ -193,12 +194,25 @@ export async function runAgentLoop(
       allBlocks.push(block);
       callbacks.onToolResult(block);
 
-      toolResultContent.push({
-        type: "tool_result",
-        tool_use_id: r.toolCallId,
-        content: r.output,
-        is_error: r.isError,
-      });
+      // Build API-level tool_result — with optional image content
+      if (r.image) {
+        toolResultContent.push({
+          type: "tool_result",
+          tool_use_id: r.toolCallId,
+          content: [
+            { type: "image", source: { type: "base64", media_type: r.image.mediaType, data: r.image.base64 } },
+            { type: "text", text: r.output },
+          ] as any,
+          is_error: r.isError,
+        });
+      } else {
+        toolResultContent.push({
+          type: "tool_result",
+          tool_use_id: r.toolCallId,
+          content: r.output,
+          is_error: r.isError,
+        });
+      }
     }
 
     messages.push({ role: "user", content: toolResultContent });

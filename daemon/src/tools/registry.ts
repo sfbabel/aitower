@@ -8,11 +8,13 @@ import type { Tool, ToolResult, ToolSummary } from "./types";
 import type { ToolDisplayInfo } from "@exocortex/shared/messages";
 import type { ApiToolCall } from "../api";
 import { bash } from "./bash";
+import { read } from "./read";
 
 // ── Registry ───────────────────────────────────────────────────────
 
 const TOOLS: Tool[] = [
   bash,
+  read,
 ];
 
 const toolMap = new Map<string, Tool>(TOOLS.map(t => [t.name, t]));
@@ -56,9 +58,17 @@ export function summarizeTool(name: string, input: Record<string, unknown>): Too
 
 // ── Build executor (injected into the agent loop) ──────────────────
 
-export function buildExecutor(): (calls: ApiToolCall[]) => Promise<{ toolCallId: string; toolName: string; output: string; isError: boolean }[]> {
+export interface ExecResult {
+  toolCallId: string;
+  toolName: string;
+  output: string;
+  isError: boolean;
+  image?: { mediaType: string; base64: string };
+}
+
+export function buildExecutor(): (calls: ApiToolCall[]) => Promise<ExecResult[]> {
   return async (calls) => {
-    const results: { toolCallId: string; toolName: string; output: string; isError: boolean }[] = [];
+    const results: ExecResult[] = [];
     for (const call of calls) {
       const tool = toolMap.get(call.name);
       let result: ToolResult;
@@ -76,6 +86,7 @@ export function buildExecutor(): (calls: ApiToolCall[]) => Promise<{ toolCallId:
         toolName: call.name,
         output: result.output,
         isError: result.isError,
+        image: result.image,
       });
     }
     return results;

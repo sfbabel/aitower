@@ -7,9 +7,15 @@
 
 // ── Execution result ───────────────────────────────────────────────
 
+export interface ImageData {
+  mediaType: string;
+  base64: string;
+}
+
 export interface ToolResult {
   output: string;
   isError: boolean;
+  image?: ImageData;
 }
 
 // ── Display data (sent to TUI) ─────────────────────────────────────
