@@ -7,6 +7,7 @@
 
 /** Find the start of the line containing `pos`. */
 export function lineStartOf(buffer: string, pos: number): number {
+  if (pos <= 0) return 0;
   const idx = buffer.lastIndexOf("\n", pos - 1);
   return idx === -1 ? 0 : idx + 1;
 }
