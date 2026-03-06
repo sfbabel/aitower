@@ -83,6 +83,9 @@ export type VimResult =
   | { type: "paste"; position: "after" | "before" }
   /** Visual selection deleted/changed in prompt. */
   | { type: "visual_edit"; buffer: string; cursor: number; mode: VimMode }
+  /** Undo/redo requested — caller manages the stack. */
+  | { type: "undo" }
+  | { type: "redo" }
   /** Engine consumed the key but needs more input (e.g. "d" waiting for motion). */
   | { type: "pending" }
   /** Engine doesn't handle this key — fall through to existing system. */

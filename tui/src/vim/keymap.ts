@@ -48,6 +48,9 @@ const KEYMAP: KeymapEntry[] = [
   { mode: "normal", context: "prompt", key: "cc", command: { type: "standalone", name: "change_line" } },
   { mode: "normal", context: "prompt", key: "yy", command: { type: "standalone", name: "yank_line" } },
 
+  // Undo/redo
+  { mode: "normal", context: "prompt", key: "u",  command: { type: "standalone", name: "undo" } },
+
   // Standalone commands
   { mode: "normal", context: "prompt", key: "x",  command: { type: "standalone", name: "delete_char" } },
   { mode: "normal", context: "prompt", key: "X",  command: { type: "standalone", name: "delete_char_before" } },

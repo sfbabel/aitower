@@ -259,6 +259,12 @@ function handleNormalMode(
 ): VimResult {
   const ks = keyString(key);
 
+  // Ctrl+R in prompt normal mode → redo
+  if (key.type === "ctrl-r" && context === "prompt") {
+    resetPending(vim);
+    return { type: "redo" };
+  }
+
   // Special keys (ctrl, arrows, etc.) pass through to existing system
   if (ks === null) return { type: "passthrough" };
 
@@ -614,6 +620,9 @@ function executeStandalone(
 
     case "paste_before":
       return { type: "paste", position: "before" };
+
+    case "undo":
+      return { type: "undo" };
 
     default:
       return { type: "noop" };

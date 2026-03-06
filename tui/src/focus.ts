@@ -25,6 +25,7 @@ import {
 import { handleSidebarKey, handleSidebarAction, moveSelection } from "./sidebar";
 import { processKey, copyToClipboard, pasteFromClipboard, type VimContext } from "./vim";
 import { clampNormal } from "./vim/buffer";
+import { pushUndo, markInsertEntry, commitInsertSession, undo as undoFn, redo as redoFn } from "./undo";
 import {
   applyHistoryAction, stripAnsi, ensureCursorVisible, placeAtBottom,
   handleHistoryFind as historyFindHandler,
@@ -173,10 +174,13 @@ function processVimKey(key: KeyEvent, state: RenderState): KeyResult | null {
       return { type: "handled" };
 
     case "buffer_edit":
+      // Snapshot before normal-mode edits (insert sessions handled via mode_change)
+      pushUndo(state.undo, state.inputBuffer, state.cursorPos);
       state.inputBuffer = result.buffer;
       state.cursorPos = result.cursor;
       if (result.mode) {
         state.vim.mode = result.mode;
+        if (result.mode === "insert") markInsertEntry(state.undo, result.buffer, result.cursor);
       } else {
         // Staying in normal mode — clamp cursor to last char
         clampCursorNormal(state);
@@ -192,14 +196,42 @@ function processVimKey(key: KeyEvent, state: RenderState): KeyResult | null {
       return { type: "handled" };
 
     case "visual_edit":
+      pushUndo(state.undo, state.inputBuffer, state.cursorPos);
       state.inputBuffer = result.buffer;
       state.cursorPos = result.cursor;
       state.vim.mode = result.mode;
+      if (result.mode === "insert") markInsertEntry(state.undo, result.buffer, result.cursor);
       return { type: "handled" };
 
+    case "undo": {
+      const snap = undoFn(state.undo, state.inputBuffer, state.cursorPos);
+      if (snap) {
+        state.inputBuffer = snap.buffer;
+        state.cursorPos = clampNormal(snap.buffer, snap.cursor);
+      }
+      return { type: "handled" };
+    }
+
+    case "redo": {
+      const snap = redoFn(state.undo, state.inputBuffer, state.cursorPos);
+      if (snap) {
+        state.inputBuffer = snap.buffer;
+        state.cursorPos = clampNormal(snap.buffer, snap.cursor);
+      }
+      return { type: "handled" };
+    }
+
     case "mode_change":
+      // Commit insert session when leaving insert mode
+      if (state.vim.mode === "insert" && result.mode !== "insert") {
+        commitInsertSession(state.undo, state.inputBuffer);
+      }
       state.vim.mode = result.mode;
       if (result.cursor !== undefined) state.cursorPos = result.cursor;
+      // Mark insert entry when entering insert mode
+      if (result.mode === "insert") {
+        markInsertEntry(state.undo, state.inputBuffer, state.cursorPos);
+      }
       // Set visual anchor for history when entering visual mode
       if ((result.mode === "visual" || result.mode === "visual-line")
           && state.chatFocus === "history") {

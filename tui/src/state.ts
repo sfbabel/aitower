@@ -15,6 +15,8 @@ import type { VimState } from "./vim";
 import { createVimState } from "./vim";
 import type { HistoryCursor } from "./historycursor";
 import { createHistoryCursor } from "./historycursor";
+import type { UndoState } from "./undo";
+import { createUndoState } from "./undo";
 
 /** Cached layout values — set by the renderer, read by scroll functions. */
 export interface LayoutCache {
@@ -61,6 +63,8 @@ export interface RenderState {
   historyVisualAnchor: HistoryCursor;
   /** Cached rendered lines for history cursor navigation (ANSI included). */
   historyLines: string[];
+  /** Undo/redo state for the prompt line. */
+  undo: UndoState;
 }
 
 /** Streaming state is derived from pendingAI — no separate boolean. */
@@ -93,5 +97,6 @@ export function createInitialState(): RenderState {
     historyCursor: createHistoryCursor(),
     historyVisualAnchor: createHistoryCursor(),
     historyLines: [],
+    undo: createUndoState(),
   };
 }
