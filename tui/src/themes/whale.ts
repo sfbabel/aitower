@@ -26,7 +26,7 @@ export const whale: Theme = {
   muted:    `${ESC}38;2;100;100;100m`,   // #646464
   error:    `${ESC}31m`,                 // red
   warning:  `${ESC}33m`,                 // yellow
-  success:  `${ESC}32m`,                 // green
+  success:  `${ESC}38;2;80;200;120m`,    // #50c878 green
   prompt:   `${ESC}34m`,                 // blue
   tool:     `${ESC}35m`,                 // magenta
 
