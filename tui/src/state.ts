@@ -16,7 +16,7 @@ import { createVimState } from "./vim";
 import type { HistoryCursor } from "./historycursor";
 import { createHistoryCursor } from "./historycursor";
 import type { UndoState } from "./undo";
-import { createUndoState } from "./undo";
+import { createUndoState, markInsertEntry } from "./undo";
 
 /** Cached layout values — set by the renderer, read by scroll functions. */
 export interface LayoutCache {
@@ -73,7 +73,7 @@ export function isStreaming(state: RenderState): boolean {
 }
 
 export function createInitialState(): RenderState {
-  return {
+  const s: RenderState = {
     messages: [],
     pendingAI: null,
     model: "opus",
@@ -99,4 +99,7 @@ export function createInitialState(): RenderState {
     historyLines: [],
     undo: createUndoState(),
   };
+  // App starts in insert mode — mark entry so first Esc commits the session
+  markInsertEntry(s.undo, s.inputBuffer, s.cursorPos);
+  return s;
 }

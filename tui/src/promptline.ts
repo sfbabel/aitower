@@ -9,6 +9,7 @@
 import type { KeyEvent } from "./input";
 import type { RenderState } from "./state";
 import { resolveAction } from "./keybinds";
+import { markInsertEntry } from "./undo";
 
 /** Returns true if the key resulted in a submit (Enter). */
 export function handlePromptKey(state: RenderState, key: KeyEvent): "submit" | "handled" | "unhandled" {
@@ -114,6 +115,9 @@ export function handlePromptKey(state: RenderState, key: KeyEvent): "submit" | "
 export function clearPrompt(state: RenderState): void {
   state.inputBuffer = "";
   state.cursorPos = 0;
+  state.vim.mode = "insert";
+  // Mark new insert session so subsequent typing is undoable
+  markInsertEntry(state.undo, "", 0);
 }
 
 // ── Input line wrapping (vim-style hard wrap) ───────────────────────
