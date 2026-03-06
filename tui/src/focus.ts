@@ -27,6 +27,7 @@ import { processKey, copyToClipboard, pasteFromClipboard, type VimContext } from
 import { clampNormal } from "./vim/buffer";
 import {
   applyHistoryAction, stripAnsi, ensureCursorVisible, placeAtBottom,
+  findForward as histFindForward, findBackward as histFindBackward,
   scrollHalfPageWithCursor, scrollFullPageWithCursor, scrollLineWithStickyCursor,
 } from "./historycursor";
 
@@ -150,6 +151,13 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
  */
 function processVimKey(key: KeyEvent, state: RenderState): KeyResult | null {
   const context = getVimContext(state);
+
+  // History-specific find handling: f/F/;/, operate on history lines, not prompt buffer
+  if (context === "history" && state.vim.mode !== "insert") {
+    const histResult = handleHistoryFind(key, state);
+    if (histResult) return histResult;
+  }
+
   const result = processKey(key, state.vim, context, state.inputBuffer, state.cursorPos);
 
   switch (result.type) {
@@ -251,6 +259,51 @@ function handleVimAction(action: string, state: RenderState): KeyResult {
     default:
       return { type: "handled" };
   }
+}
+
+// ── History find (f/F/;/,) ───────────────────────────────────────
+
+/**
+ * Handle f/F/;/, for history context. Returns null if the key isn't a find key.
+ * Manages vim.pendingFind and vim.lastFind directly — the engine never sees these keys.
+ */
+function handleHistoryFind(key: KeyEvent, state: RenderState): KeyResult | null {
+  const vim = state.vim;
+  const lines = state.historyLines;
+
+  // Resolve pending find — waiting for the target character
+  if (vim.pendingFind) {
+    if (key.type !== "char" || !key.char) { vim.pendingFind = null; return { type: "handled" }; }
+    const dir = vim.pendingFind;
+    vim.lastFind = { char: key.char, direction: dir };
+    vim.pendingFind = null;
+    state.historyCursor = dir === "f"
+      ? histFindForward(state.historyCursor, lines, key.char)
+      : histFindBackward(state.historyCursor, lines, key.char);
+    ensureCursorVisible(state);
+    return { type: "handled" };
+  }
+
+  // Initiate find
+  if (key.type === "char" && (key.char === "f" || key.char === "F")) {
+    vim.pendingFind = key.char as "f" | "F";
+    return { type: "handled" };
+  }
+
+  // Repeat last find
+  if (key.type === "char" && (key.char === ";" || key.char === ",")) {
+    if (!vim.lastFind) return { type: "handled" };
+    const dir = key.char === ";"
+      ? vim.lastFind.direction
+      : (vim.lastFind.direction === "f" ? "F" : "f") as "f" | "F";
+    state.historyCursor = dir === "f"
+      ? histFindForward(state.historyCursor, lines, vim.lastFind.char)
+      : histFindBackward(state.historyCursor, lines, vim.lastFind.char);
+    ensureCursorVisible(state);
+    return { type: "handled" };
+  }
+
+  return null; // not a find key — let the engine handle it
 }
 
 // ── History cursor actions ────────────────────────────────────────

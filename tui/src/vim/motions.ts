@@ -185,6 +185,26 @@ export function lineUp(buffer: string, pos: number): number {
   return prevLs + Math.min(col, prevLineLen);
 }
 
+// ── Find motions (f/F) ─────────────────────────────────────────────
+
+/** f{char} — move to next occurrence of char on the current line. */
+export function findForward(buffer: string, pos: number, char: string): number {
+  const le = lineEndOf(buffer, pos);
+  for (let i = pos + 1; i <= le; i++) {
+    if (buffer[i] === char) return i;
+  }
+  return pos; // not found — stay put
+}
+
+/** F{char} — move to previous occurrence of char on the current line. */
+export function findBackward(buffer: string, pos: number, char: string): number {
+  const ls = lineStartOf(buffer, pos);
+  for (let i = pos - 1; i >= ls; i--) {
+    if (buffer[i] === char) return i;
+  }
+  return pos; // not found — stay put
+}
+
 // ── Buffer-level motions ───────────────────────────────────────────
 
 /** gg — move to start of buffer. */

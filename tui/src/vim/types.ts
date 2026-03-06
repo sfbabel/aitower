@@ -31,6 +31,10 @@ export interface VimState {
   count: number | null;
   /** Anchor position for visual mode selection. */
   visualAnchor: number;
+  /** Waiting for a character after f/F/t/T. */
+  pendingFind: "f" | "F" | null;
+  /** Last f/F find — used by ; and , to repeat. */
+  lastFind: { char: string; direction: "f" | "F" } | null;
 }
 
 export function createVimState(): VimState {
@@ -42,16 +46,20 @@ export function createVimState(): VimState {
     pendingKeys: "",
     count: null,
     visualAnchor: 0,
+    pendingFind: null,
+    lastFind: null,
   };
 }
 
-/** Reset all pending state (count, operator, keys, text object modifier). */
+/** Reset all pending state (count, operator, keys, text object modifier, pending find). */
 export function resetPending(vim: VimState): void {
   vim.pendingOperator = null;
   vim.pendingOperatorKey = null;
   vim.pendingTextObjectModifier = null;
   vim.pendingKeys = "";
   vim.count = null;
+  vim.pendingFind = null;
+  // lastFind is intentionally NOT cleared — ; and , need it across commands
 }
 
 // ── Result ─────────────────────────────────────────────────────────

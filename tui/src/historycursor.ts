@@ -277,6 +277,28 @@ export function wordEndBig(cursor: HistoryCursor, lines: string[]): HistoryCurso
   return { row: cursor.row, col: end };
 }
 
+// ── Find motions (f/F) ─────────────────────────────────────────────
+
+/** f{char} — move to next occurrence of char on the current line within content bounds. */
+export function findForward(cursor: HistoryCursor, lines: string[], char: string): HistoryCursor {
+  const plain = stripAnsi(lines[cursor.row] ?? "");
+  const { end } = contentBounds(plain);
+  for (let i = cursor.col + 1; i <= end; i++) {
+    if (plain[i] === char) return { row: cursor.row, col: i };
+  }
+  return cursor; // not found — stay put
+}
+
+/** F{char} — move to previous occurrence of char on the current line within content bounds. */
+export function findBackward(cursor: HistoryCursor, lines: string[], char: string): HistoryCursor {
+  const plain = stripAnsi(lines[cursor.row] ?? "");
+  const { start } = contentBounds(plain);
+  for (let i = cursor.col - 1; i >= start; i--) {
+    if (plain[i] === char) return { row: cursor.row, col: i };
+  }
+  return cursor; // not found — stay put
+}
+
 // ── Placement ──────────────────────────────────────────────────────
 
 /**

@@ -15,7 +15,7 @@ import type {
 } from "./types";
 import { resetPending } from "./types";
 import { lookupCommand, isPrefix } from "./keymap";
-import { resolveMotion } from "./motions";
+import { resolveMotion, findForward, findBackward } from "./motions";
 import { resolveTextObject, isTextObjectKey } from "./textobjects";
 import { lineStartOf, lineEndOf, clampNormal } from "./buffer";
 import * as ops from "./operators";
@@ -72,6 +72,35 @@ function handleInsertMode(key: KeyEvent, vim: VimState, buffer: string, cursor: 
   return { type: "passthrough" };
 }
 
+// ── Find helpers ──────────────────────────────────────────────────
+
+/** Resolve a find motion (f/F) to a new cursor position. */
+function resolveFind(dir: "f" | "F", char: string, buffer: string, pos: number): number {
+  return dir === "f" ? findForward(buffer, pos, char) : findBackward(buffer, pos, char);
+}
+
+/** Apply a find as a standalone motion — move cursor, store lastFind. */
+function applyFindMotion(vim: VimState, dir: "f" | "F", char: string, buffer: string, cursor: number): VimResult {
+  vim.lastFind = { char, direction: dir };
+  vim.pendingFind = null;
+  const newPos = resolveFind(dir, char, buffer, cursor);
+  return { type: "cursor_move", cursor: newPos };
+}
+
+/** Apply a find with a pending operator (e.g. df), dF)). */
+function applyFindOperator(vim: VimState, dir: "f" | "F", char: string, buffer: string, cursor: number): VimResult {
+  vim.lastFind = { char, direction: dir };
+  vim.pendingFind = null;
+  const target = resolveFind(dir, char, buffer, cursor);
+  if (target === cursor) { resetPending(vim); return { type: "noop" }; }
+  // f is inclusive — include the found character in the range
+  const start = Math.min(cursor, target);
+  const end = Math.max(cursor, target);
+  const result = applyOperatorToRange(vim.pendingOperator!, buffer, start, end);
+  resetPending(vim);
+  return result;
+}
+
 /** Exit visual mode → normal. Used by Escape, v toggle, V toggle. */
 function exitVisual(vim: VimState, cursor: number): VimResult {
   vim.mode = "normal";
@@ -108,6 +137,28 @@ function handleVisualMode(
   }
 
   if (ks === null) return { type: "passthrough" };
+
+  // Pending find (f/F waiting for character) in visual
+  if (vim.pendingFind) {
+    if (key.type !== "char" || !key.char) { vim.pendingFind = null; return { type: "noop" }; }
+    vim.lastFind = { char: key.char, direction: vim.pendingFind };
+    vim.pendingFind = null;
+    const newPos = resolveFind(vim.lastFind.direction, vim.lastFind.char, buffer, cursor);
+    return { type: "cursor_move", cursor: newPos };
+  }
+
+  // f/F — initiate find; ;/, — repeat last find (extends selection)
+  if (ks === "f" || ks === "F") {
+    vim.pendingFind = ks;
+    return { type: "pending" };
+  }
+  if (ks === ";" || ks === ",") {
+    if (!vim.lastFind) return { type: "noop" };
+    const dir = ks === ";" ? vim.lastFind.direction
+      : (vim.lastFind.direction === "f" ? "F" : "f") as "f" | "F";
+    const newPos = resolveFind(dir, vim.lastFind.char, buffer, cursor);
+    return { type: "cursor_move", cursor: newPos };
+  }
 
   // Multi-key sequence support (gg in visual)
   const fullKey = vim.pendingKeys + ks;
@@ -223,11 +274,35 @@ function handleNormalMode(
     return { type: "passthrough" };
   }
 
+  // ── Pending find (f/F waiting for character) ────────────────────
+  if (vim.pendingFind) {
+    if (key.type !== "char" || !key.char) { vim.pendingFind = null; return { type: "noop" }; }
+    if (vim.pendingOperator) {
+      return applyFindOperator(vim, vim.pendingFind, key.char, buffer, cursor);
+    }
+    return applyFindMotion(vim, vim.pendingFind, key.char, buffer, cursor);
+  }
+
   // ── Count prefix ───────────────────────────────────────────────
   // Digits 1-9 start a count, 0 only continues (0 alone is line_start motion)
   if (/^[1-9]$/.test(ks) || (ks === "0" && vim.count !== null)) {
     vim.count = (vim.count ?? 0) * 10 + parseInt(ks, 10);
     return { type: "pending" };
+  }
+
+  // ── f/F — initiate find; ;/, — repeat last find ────────────────
+  if (ks === "f" || ks === "F") {
+    vim.pendingFind = ks;
+    return { type: "pending" };
+  }
+  if (ks === ";" || ks === ",") {
+    if (!vim.lastFind) return { type: "noop" };
+    const dir = ks === ";" ? vim.lastFind.direction
+      : (vim.lastFind.direction === "f" ? "F" : "f") as "f" | "F";
+    if (vim.pendingOperator) {
+      return applyFindOperator(vim, dir, vim.lastFind.char, buffer, cursor);
+    }
+    return applyFindMotion(vim, dir, vim.lastFind.char, buffer, cursor);
   }
 
   // ── Build full key (pending multi-key + current) ───────────────
@@ -266,6 +341,7 @@ function handleNormalMode(
       return { type: "pending" };
     }
 
+    // f/F after operator — handled above
     const cmd = lookupCommand(vim.mode, context, ks);
     if (cmd && cmd.type === "motion") {
       const result = executeOperatorMotion(vim.pendingOperator, cmd.name, vim, buffer, cursor);
