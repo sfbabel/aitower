@@ -14,7 +14,7 @@ import { handleFocusedKey } from "./focus";
 import { clearPrompt } from "./promptline";
 import { tryCommand } from "./commands";
 import { render } from "./render";
-import { enter_alt, leave_alt, hide_cursor, show_cursor } from "./terminal";
+import { enter_alt, leave_alt, hide_cursor, show_cursor, enable_bracketed_paste, disable_bracketed_paste } from "./terminal";
 import { createInitialState, isStreaming } from "./state";
 import { createPendingAI } from "./messages";
 import { handleEvent } from "./events";
@@ -154,7 +154,7 @@ function handleKey(key: KeyEvent): void {
 // ── Terminal setup ──────────────────────────────────────────────────
 
 function setupTerminal(): void {
-  process.stdout.write(enter_alt + hide_cursor);
+  process.stdout.write(enter_alt + hide_cursor + enable_bracketed_paste);
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
   process.stdin.resume();
   terminalSetUp = true;
@@ -163,7 +163,7 @@ function setupTerminal(): void {
 function restoreTerminal(): void {
   if (!terminalSetUp) return;
   if (process.stdin.isTTY) process.stdin.setRawMode(false);
-  process.stdout.write(show_cursor + leave_alt);
+  process.stdout.write(disable_bracketed_paste + show_cursor + leave_alt);
   terminalSetUp = false;
 }
 

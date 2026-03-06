@@ -13,8 +13,11 @@ export interface KeyEvent {
       | "ctrl-o" | "ctrl-u" | "ctrl-y"
       | "ctrl-shift-o"
       | "escape"
+      | "paste"
       | "unknown";
   char?: string;
+  /** For paste events: the full pasted text. */
+  text?: string;
 }
 
 /**
@@ -28,12 +31,30 @@ const CSI_U_MAP: Record<string, KeyEvent["type"]> = {
   "111;6": "ctrl-shift-o",   // Ctrl+Shift+O (o=111)
 };
 
+const PASTE_START = "\x1b[200~";
+const PASTE_END = "\x1b[201~";
+
 export function parseKeys(data: Buffer): KeyEvent[] {
   const events: KeyEvent[] = [];
   const str = data.toString("utf-8");
   let i = 0;
 
   while (i < str.length) {
+    // Bracketed paste: everything between \x1b[200~ and \x1b[201~ is one paste event
+    if (str.startsWith(PASTE_START, i)) {
+      i += PASTE_START.length;
+      const endIdx = str.indexOf(PASTE_END, i);
+      if (endIdx !== -1) {
+        events.push({ type: "paste", text: str.slice(i, endIdx) });
+        i = endIdx + PASTE_END.length;
+      } else {
+        // No closing bracket — treat rest as paste
+        events.push({ type: "paste", text: str.slice(i) });
+        i = str.length;
+      }
+      continue;
+    }
+
     const ch = str[i];
     const code = str.charCodeAt(i);
 

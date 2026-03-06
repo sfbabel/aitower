@@ -46,6 +46,20 @@ export type KeyResult =
 // ── Key routing ─────────────────────────────────────────────────────
 
 export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
+  // Bracketed paste — insert directly into prompt buffer, newlines preserved
+  if (key.type === "paste" && key.text) {
+    const text = key.text;
+    const buf = state.inputBuffer;
+    const pos = state.cursorPos;
+    state.inputBuffer = buf.slice(0, pos) + text + buf.slice(pos);
+    state.cursorPos = pos + text.length;
+    // Ensure prompt is focused and in insert mode
+    state.panelFocus = "chat";
+    state.chatFocus = "prompt";
+    if (state.vim.mode !== "insert") state.vim.mode = "insert";
+    return { type: "handled" };
+  }
+
   const action = resolveAction(key);
 
   // Global actions — work regardless of focus and vim mode
