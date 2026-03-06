@@ -128,6 +128,16 @@ export function mark(id: string, marked: boolean): boolean {
   return true;
 }
 
+/** Toggle or set the pinned flag on a conversation. */
+export function pin(id: string, pinned: boolean): boolean {
+  const conv = conversations.get(id);
+  if (!conv) return false;
+  conv.pinned = pinned;
+  markDirty(id);
+  flush(id);
+  return true;
+}
+
 /** Get a single conversation's summary. */
 export function getSummary(id: string): ConversationSummary | null {
   const conv = conversations.get(id);
@@ -146,6 +156,7 @@ export function getSummary(id: string): ConversationSummary | null {
     messageCount: conv.messages.length,
     preview,
     marked: conv.marked,
+    pinned: conv.pinned,
   };
 }
 

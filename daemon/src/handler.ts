@@ -122,6 +122,14 @@ export function createHandler(server: DaemonServer) {
         break;
       }
 
+      case "pin_conversation": {
+        const ok = convStore.pin(cmd.convId, cmd.pinned);
+        if (ok) {
+          server.broadcast({ type: "conversation_pinned", convId: cmd.convId, pinned: cmd.pinned });
+        }
+        break;
+      }
+
       case "load_conversation": {
         const data = convStore.getDisplayData(cmd.convId);
         if (!data) {

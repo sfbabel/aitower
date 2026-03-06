@@ -82,6 +82,13 @@ export interface MarkConversationCommand {
   marked: boolean;
 }
 
+export interface PinConversationCommand {
+  type: "pin_conversation";
+  reqId?: string;
+  convId: string;
+  pinned: boolean;
+}
+
 export type Command =
   | PingCommand
   | NewConversationCommand
@@ -93,7 +100,8 @@ export type Command =
   | ListConversationsCommand
   | LoadConversationCommand
   | DeleteConversationCommand
-  | MarkConversationCommand;
+  | MarkConversationCommand
+  | PinConversationCommand;
 
 // ── Events (daemon → client) ────────────────────────────────────────
 
@@ -225,6 +233,12 @@ export interface ConversationMarkedEvent {
   marked: boolean;
 }
 
+export interface ConversationPinnedEvent {
+  type: "conversation_pinned";
+  convId: string;
+  pinned: boolean;
+}
+
 export interface ToolsAvailableEvent {
   type: "tools_available";
   tools: ToolDisplayInfo[];
@@ -257,5 +271,6 @@ export type Event =
   | ConversationUpdatedEvent
   | ConversationDeletedEvent
   | ConversationMarkedEvent
+  | ConversationPinnedEvent
   | ToolsAvailableEvent
   | ErrorEvent;

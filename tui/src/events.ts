@@ -197,6 +197,20 @@ export function handleEvent(
       break;
     }
 
+    case "conversation_pinned": {
+      const conv = state.sidebar.conversations.find(c => c.id === event.convId);
+      if (conv) {
+        conv.pinned = event.pinned;
+        // Re-sort: pinned first, then by updatedAt desc
+        state.sidebar.conversations.sort((a, b) => {
+          if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+          return b.updatedAt - a.updatedAt;
+        });
+        syncSelectedIndex(state.sidebar);
+      }
+      break;
+    }
+
     case "conversation_loaded": {
       // Unsubscribe from old conversation before switching
       if (state.convId && state.convId !== event.convId) {

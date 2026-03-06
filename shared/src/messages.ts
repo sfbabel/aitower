@@ -97,6 +97,7 @@ export interface ConversationSummary {
   messageCount: number;
   preview: string;
   marked: boolean;
+  pinned: boolean;
 }
 
 // ── Tool display info (daemon → TUI on connect) ────────────────────

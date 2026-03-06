@@ -118,6 +118,10 @@ export class DaemonClient {
     this.send({ type: "mark_conversation", convId, marked });
   }
 
+  pinConversation(convId: string, pinned: boolean): void {
+    this.send({ type: "pin_conversation", convId, pinned });
+  }
+
   listConversations(): void {
     this.send({ type: "list_conversations" });
   }

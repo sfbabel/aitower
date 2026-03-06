@@ -43,6 +43,7 @@ export type SidebarKeyResult =
   | { type: "select"; convId: string }
   | { type: "delete_conversation"; convId: string }
   | { type: "mark_conversation"; convId: string; marked: boolean }
+  | { type: "pin_conversation"; convId: string; pinned: boolean }
   | { type: "unhandled" };
 
 export function handleSidebarKey(key: KeyEvent, sidebar: SidebarState): SidebarKeyResult {
@@ -104,6 +105,22 @@ export function handleSidebarAction(action: string, sidebar: SidebarState): Side
       return { type: "mark_conversation", convId: conv.id, marked: newMarked };
     }
 
+    case "pin": {
+      if (sidebar.conversations.length === 0) return { type: "handled" };
+      const conv = sidebar.conversations[sidebar.selectedIndex];
+      if (!conv) return { type: "handled" };
+      // Optimistic toggle
+      const newPinned = !conv.pinned;
+      conv.pinned = newPinned;
+      // Re-sort: pinned first, then by updatedAt desc
+      sidebar.conversations.sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+        return b.updatedAt - a.updatedAt;
+      });
+      syncSelectedIndex(sidebar);
+      return { type: "pin_conversation", convId: conv.id, pinned: newPinned };
+    }
+
     case "focus_prompt":
       return { type: "unhandled" };
 
@@ -134,7 +151,10 @@ export function updateConversation(sidebar: SidebarState, summary: ConversationS
   } else {
     sidebar.conversations.unshift(summary);
   }
-  sidebar.conversations.sort((a, b) => b.updatedAt - a.updatedAt);
+  sidebar.conversations.sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    return b.updatedAt - a.updatedAt;
+  });
   syncSelectedIndex(sidebar);
 }
 
@@ -186,24 +206,51 @@ export function renderSidebar(
     "─".repeat(innerWidth) + "┤" + theme.reset,
   );
 
-  // Remaining rows: conversation list
-  const listRows = totalRows - 2;
+  // Build display rows: section labels + delimiter + conversation entries
   const convs = sidebar.conversations;
+  const pinnedCount = convs.filter(c => c.pinned).length;
 
-  // Scroll to keep selection visible
-  let scrollOffset = sidebar.scrollOffset;
-  if (sidebar.selectedIndex < scrollOffset) {
-    scrollOffset = sidebar.selectedIndex;
-  } else if (sidebar.selectedIndex >= scrollOffset + listRows) {
-    scrollOffset = sidebar.selectedIndex - listRows + 1;
+  interface DisplayRow {
+    type: "label" | "delimiter" | "entry";
+    convIdx?: number;
+    text?: string;
   }
-  scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, convs.length - listRows)));
+  const displayRows: DisplayRow[] = [];
+
+  if (pinnedCount > 0) {
+    displayRows.push({ type: "label", text: " Pinned" });
+    for (let i = 0; i < pinnedCount; i++) {
+      displayRows.push({ type: "entry", convIdx: i });
+    }
+    displayRows.push({ type: "delimiter" });
+  }
+  for (let i = pinnedCount; i < convs.length; i++) {
+    displayRows.push({ type: "entry", convIdx: i });
+  }
+
+  // Map selectedIndex (into convs[]) to display row index for scroll tracking
+  let selectedDisplayIdx = 0;
+  for (let di = 0; di < displayRows.length; di++) {
+    if (displayRows[di].type === "entry" && displayRows[di].convIdx === sidebar.selectedIndex) {
+      selectedDisplayIdx = di;
+      break;
+    }
+  }
+
+  const listRows = totalRows - 2;
+  let scrollOffset = sidebar.scrollOffset;
+  if (selectedDisplayIdx < scrollOffset) {
+    scrollOffset = selectedDisplayIdx;
+  } else if (selectedDisplayIdx >= scrollOffset + listRows) {
+    scrollOffset = selectedDisplayIdx - listRows + 1;
+  }
+  scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, displayRows.length - listRows)));
   sidebar.scrollOffset = scrollOffset;
 
   for (let i = 0; i < listRows; i++) {
-    const ci = scrollOffset + i;
+    const di = scrollOffset + i;
 
-    if (ci >= convs.length) {
+    if (di >= displayRows.length) {
       // Empty row
       rows.push(
         theme.sidebarBg +
@@ -213,17 +260,37 @@ export function renderSidebar(
       continue;
     }
 
+    const dr = displayRows[di];
+
+    if (dr.type === "label") {
+      rows.push(
+        theme.sidebarBg + theme.text + theme.bold +
+        pad(dr.text!, innerWidth) +
+        theme.reset + borderFg + "│" + theme.reset,
+      );
+      continue;
+    }
+
+    if (dr.type === "delimiter") {
+      rows.push(
+        theme.sidebarBg + theme.muted +
+        pad(" " + "─".repeat(innerWidth - 2) + " ", innerWidth) +
+        theme.reset + borderFg + "│" + theme.reset,
+      );
+      continue;
+    }
+
+    // Entry row
+    const ci = dr.convIdx!;
     const conv = convs[ci];
     const isSelected = ci === sidebar.selectedIndex;
     const isCurrent = conv.id === currentConvId;
     const isPendingDelete = conv.id === sidebar.pendingDeleteId;
 
-    // Build entry
     const prefix = isSelected ? "▸ " : "  ";
     const markIcon = conv.marked ? "★ " : "";
     const maxTitle = innerWidth - prefix.length - markIcon.length;
     let title = conv.preview || "(empty)";
-    // Take first line only
     const nlIdx = title.indexOf("\n");
     if (nlIdx !== -1) title = title.slice(0, nlIdx);
     if (title.length > maxTitle) title = title.slice(0, maxTitle - 1) + "…";

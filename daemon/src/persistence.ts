@@ -15,7 +15,7 @@ import type { Conversation, StoredMessage, ApiMessage, ModelId, ConversationSumm
 
 // ── Schema version ──────────────────────────────────────────────────
 
-const CURRENT_VERSION = 4;
+const CURRENT_VERSION = 5;
 
 interface ConversationFileV1 {
   version: 1;
@@ -56,7 +56,19 @@ interface ConversationFileV4 {
   marked: boolean;
 }
 
-type ConversationFile = ConversationFileV4;
+interface ConversationFileV5 {
+  version: 5;
+  id: string;
+  model: ModelId;
+  messages: StoredMessage[];
+  createdAt: number;
+  updatedAt: number;
+  lastContextTokens: number | null;
+  marked: boolean;
+  pinned: boolean;
+}
+
+type ConversationFile = ConversationFileV5;
 
 // ── Migrations ──────────────────────────────────────────────────────
 
@@ -91,6 +103,15 @@ function migrateV3toV4(data: ConversationFileV3): ConversationFileV4 {
   };
 }
 
+/** v4 → v5: Add pinned flag. */
+function migrateV4toV5(data: ConversationFileV4): ConversationFileV5 {
+  return {
+    ...data,
+    version: 5,
+    pinned: false,
+  };
+}
+
 function migrate(data: Record<string, unknown>): ConversationFile {
   let version = (data.version as number) ?? 1;
 
@@ -107,6 +128,11 @@ function migrate(data: Record<string, unknown>): ConversationFile {
   if (version === 3) {
     data = migrateV3toV4(data as unknown as ConversationFileV3) as unknown as Record<string, unknown>;
     version = 4;
+  }
+
+  if (version === 4) {
+    data = migrateV4toV5(data as unknown as ConversationFileV4) as unknown as Record<string, unknown>;
+    version = 5;
   }
 
   if (version === CURRENT_VERSION) {
@@ -143,6 +169,7 @@ function toFile(conv: Conversation): ConversationFile {
     updatedAt: conv.updatedAt,
     lastContextTokens: conv.lastContextTokens,
     marked: conv.marked,
+    pinned: conv.pinned,
   };
 }
 
@@ -155,6 +182,7 @@ function fromFile(file: ConversationFile): Conversation {
     updatedAt: file.updatedAt,
     lastContextTokens: file.lastContextTokens,
     marked: file.marked,
+    pinned: file.pinned,
   };
 }
 
@@ -211,13 +239,18 @@ export function loadAll(): ConversationSummary[] {
         messageCount: file.messages.length,
         preview,
         marked: file.marked,
+        pinned: file.pinned,
       });
     } catch (err) {
       log("error", `persistence: failed to load summary for ${filename}: ${err}`);
     }
   }
 
-  summaries.sort((a, b) => b.updatedAt - a.updatedAt);
+  // Pinned first (stable order among pinned), then unpinned by updatedAt desc
+  summaries.sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    return b.updatedAt - a.updatedAt;
+  });
   return summaries;
 }
 

@@ -42,6 +42,7 @@ export interface Conversation {
   updatedAt: number;
   lastContextTokens: number | null;
   marked: boolean;
+  pinned: boolean;
 }
 
 export function createConversation(id: string, model: ModelId): Conversation {
@@ -54,5 +55,6 @@ export function createConversation(id: string, model: ModelId): Conversation {
     updatedAt: now,
     lastContextTokens: null,
     marked: false,
+    pinned: false,
   };
 }
