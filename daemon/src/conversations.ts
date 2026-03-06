@@ -132,6 +132,8 @@ export function mark(id: string, marked: boolean): boolean {
 export function pin(id: string, pinned: boolean): boolean {
   const conv = conversations.get(id);
   if (!conv) return false;
+  // Unpinning: bump updatedAt so it appears at the top of unpinned
+  if (!pinned && conv.pinned) conv.updatedAt = Date.now();
   conv.pinned = pinned;
   markDirty(id);
   flush(id);
