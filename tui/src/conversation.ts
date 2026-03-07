@@ -141,12 +141,11 @@ export function buildMessageLines(state: RenderState, availableWidth: number): s
   const lines: string[] = [];
 
   for (const msg of state.messages) {
-    lines.push("");
-
     if (msg.role === "user") {
       lines.push(...renderUserMessage(msg.text, availableWidth));
     } else if (msg.role === "assistant") {
       lines.push(...renderAIMessage(msg, contentWidth, state.toolRegistry, state.showToolOutput));
+      lines.push("");
     } else {
       const color = msg.color || theme.dim;
       for (const sl of msg.text.split("\n")) {
@@ -157,8 +156,8 @@ export function buildMessageLines(state: RenderState, availableWidth: number): s
 
   // Currently streaming AI message
   if (state.pendingAI) {
-    lines.push("");
     lines.push(...renderAIMessage(state.pendingAI, contentWidth, state.toolRegistry, state.showToolOutput));
+    lines.push("");
   }
 
   return lines;
