@@ -14,7 +14,7 @@ export function buildSystemPrompt(): string {
   });
 
   const base = [
-    `You are an AI assistant. You are helpful, harmless, and honest.`,
+    `You are Mnemo, the user's assistant.`,
     ``,
     `Environment:`,
     `- Working directory: ${cwd}`,
