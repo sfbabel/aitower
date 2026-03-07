@@ -207,23 +207,18 @@ export interface AIMessagePayload {
   metadata: MessageMetadata | null;
 }
 
-export interface SystemMessagePayload {
-  text: string;
-  color?: string;
-  /** Position in the display message list (inserted after this many user+AI messages). */
-  afterIndex: number;
-}
+export type DisplayEntry =
+  | { type: "user"; text: string }
+  | { type: "ai"; blocks: Block[]; metadata: MessageMetadata | null }
+  | { type: "system"; text: string; color?: string };
 
 export interface ConversationLoadedEvent {
   type: "conversation_loaded";
   reqId?: string;
   convId: string;
   model: ModelId;
-  aiMessages: AIMessagePayload[];
-  /** The raw user message texts, in order, for display. */
-  userMessages: string[];
-  /** System messages with their position in the conversation. */
-  systemMessages: SystemMessagePayload[];
+  /** All messages in display order. */
+  entries: DisplayEntry[];
   /** Last known input token count for this conversation. */
   contextTokens: number | null;
 }

@@ -12,7 +12,6 @@ import type { SystemMessage } from "./messages";
 import { updateConversationList, updateConversation, syncSelectedIndex } from "./sidebar";
 import { theme } from "./theme";
 import type { Event } from "./protocol";
-import type { AIMessage } from "./messages";
 
 // ── Daemon actions interface ────────────────────────────────────────
 // Minimal interface so this file doesn't depend on DaemonClient.
@@ -226,47 +225,23 @@ export function handleEvent(
       state.scrollOffset = 0;
       state.contextTokens = event.contextTokens;
 
-      // Build interleaved message list: user, AI, and system messages in order
-      const sysMap = new Map<number, typeof event.systemMessages>();
-      for (const sm of event.systemMessages) {
-        const list = sysMap.get(sm.afterIndex) ?? [];
-        list.push(sm);
-        sysMap.set(sm.afterIndex, list);
-      }
-
-      // Insert system messages that appear before any user/AI messages
-      for (const sm of sysMap.get(0) ?? []) {
-        const color = sm.color === "error" ? theme.error : theme.muted;
-        state.messages.push({ role: "system", text: sm.text, color, metadata: null });
-      }
-
-      let displayIdx = 0;
-      const totalPairs = Math.max(event.userMessages.length, event.aiMessages.length);
-      let userIdx = 0;
-      let aiIdx = 0;
-      for (let i = 0; i < totalPairs; i++) {
-        if (userIdx < event.userMessages.length) {
-          state.messages.push({ role: "user", text: event.userMessages[userIdx], metadata: null });
-          userIdx++;
-          displayIdx++;
-          for (const sm of sysMap.get(displayIdx) ?? []) {
-            const color = sm.color === "error" ? theme.error : theme.muted;
-            state.messages.push({ role: "system", text: sm.text, color, metadata: null });
-          }
-        }
-        if (aiIdx < event.aiMessages.length) {
-          const loaded = event.aiMessages[aiIdx];
-          const aiMsg: AIMessage = {
-            role: "assistant",
-            blocks: loaded.blocks,
-            metadata: loaded.metadata ?? { startedAt: 0, endedAt: 0, model: event.model, tokens: 0 },
-          };
-          state.messages.push(aiMsg);
-          aiIdx++;
-          displayIdx++;
-          for (const sm of sysMap.get(displayIdx) ?? []) {
-            const color = sm.color === "error" ? theme.error : theme.muted;
-            state.messages.push({ role: "system", text: sm.text, color, metadata: null });
+      // Entries arrive in display order — just map to TUI message types
+      for (const entry of event.entries) {
+        switch (entry.type) {
+          case "user":
+            state.messages.push({ role: "user", text: entry.text, metadata: null });
+            break;
+          case "ai":
+            state.messages.push({
+              role: "assistant",
+              blocks: entry.blocks,
+              metadata: entry.metadata ?? { startedAt: 0, endedAt: 0, model: event.model, tokens: 0 },
+            });
+            break;
+          case "system": {
+            const color = entry.color === "error" ? theme.error : theme.muted;
+            state.messages.push({ role: "system", text: entry.text, color, metadata: null });
+            break;
           }
         }
       }

@@ -12,24 +12,15 @@ import type { ModelId } from "./messages";
 
 // ── Types ──────────────────────────────────────────────────────────
 
-export interface AIMessageDisplay {
-  blocks: Block[];
-  metadata: MessageMetadata | null;
-}
-
-export interface SystemMessageDisplay {
-  text: string;
-  color?: string;
-  /** Position in the display list: inserted after this many user+AI messages. */
-  afterIndex: number;
-}
+export type DisplayEntry =
+  | { type: "user"; text: string }
+  | { type: "ai"; blocks: Block[]; metadata: MessageMetadata | null }
+  | { type: "system"; text: string; color?: string };
 
 export interface ConversationDisplayData {
   convId: string;
   model: ModelId;
-  userMessages: string[];
-  aiMessages: AIMessageDisplay[];
-  systemMessages: SystemMessageDisplay[];
+  entries: DisplayEntry[];
   contextTokens: number | null;
 }
 
@@ -45,19 +36,14 @@ export function buildDisplayData(
   lastContextTokens: number | null,
   summarizer: ToolSummarizerFn,
 ): ConversationDisplayData {
-  const userMessages: string[] = [];
-  const aiMessages: AIMessageDisplay[] = [];
-  const systemMessages: SystemMessageDisplay[] = [];
-  /** Counts user+AI messages emitted so far, for system message positioning. */
-  let displayIndex = 0;
+  const entries: DisplayEntry[] = [];
 
   let currentAI: { blocks: Block[]; metadata: MessageMetadata | null } | null = null;
 
   function flushAI(): void {
     if (currentAI) {
-      aiMessages.push(currentAI);
+      entries.push({ type: "ai", blocks: currentAI.blocks, metadata: currentAI.metadata });
       currentAI = null;
-      displayIndex++;
     }
   }
 
@@ -104,7 +90,7 @@ export function buildDisplayData(
     if (msg.role === "system") {
       flushAI();
       const text = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
-      systemMessages.push({ text, color: "error", afterIndex: displayIndex });
+      entries.push({ type: "system", text, color: "error" });
       continue;
     }
     if (msg.role === "user") {
@@ -116,8 +102,7 @@ export function buildDisplayData(
         }
       }
       flushAI();
-      userMessages.push(typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content));
-      displayIndex++;
+      entries.push({ type: "user", text: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content) });
     } else if (msg.role === "assistant") {
       if (currentAI) {
         currentAI.blocks.push(...extractBlocks(msg.content));
@@ -129,5 +114,5 @@ export function buildDisplayData(
   }
   flushAI();
 
-  return { convId, model, userMessages, aiMessages, systemMessages, contextTokens: lastContextTokens };
+  return { convId, model, entries, contextTokens: lastContextTokens };
 }

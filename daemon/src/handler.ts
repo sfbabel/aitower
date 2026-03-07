@@ -145,9 +145,7 @@ export function createHandler(server: DaemonServer) {
           reqId: cmd.reqId,
           convId: data.convId,
           model: data.model,
-          aiMessages: data.aiMessages,
-          userMessages: data.userMessages,
-          systemMessages: data.systemMessages,
+          entries: data.entries,
           contextTokens: data.contextTokens,
         });
         server.subscribe(client, data.convId);
