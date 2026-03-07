@@ -10,10 +10,21 @@ import type { KeyEvent } from "./input";
 import type { RenderState } from "./state";
 import { resolveAction } from "./keybinds";
 import { markInsertEntry } from "./undo";
+import { tabComplete } from "./tabcomplete";
 
 /** Returns true if the key resulted in a submit (Enter). */
 export function handlePromptKey(state: RenderState, key: KeyEvent): "submit" | "handled" | "unhandled" {
   const action = resolveAction(key);
+
+  // Tab → path completion
+  if (key.type === "tab") {
+    const result = tabComplete(state.inputBuffer, state.cursorPos);
+    if (result) {
+      state.inputBuffer = result.buffer;
+      state.cursorPos = result.cursor;
+    }
+    return "handled";
+  }
 
   // Char input — only when no action is bound to this key
   if (key.type === "char" && action === null) {

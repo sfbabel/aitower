@@ -5,7 +5,7 @@
  */
 
 export interface KeyEvent {
-  type: "char" | "enter" | "backspace" | "delete"
+  type: "char" | "enter" | "tab" | "backspace" | "delete"
       | "left" | "right" | "home" | "end"
       | "up" | "down"
       | "ctrl-b" | "ctrl-c" | "ctrl-d" | "ctrl-e" | "ctrl-f"
@@ -58,6 +58,8 @@ export function parseKeys(data: Buffer): KeyEvent[] {
     const ch = str[i];
     const code = str.charCodeAt(i);
 
+    // Tab
+    if (code === 9)  { events.push({ type: "tab" }); i++; continue; }
     // Ctrl keys (byte order)
     if (code === 2)  { events.push({ type: "ctrl-b" }); i++; continue; }
     if (code === 3)  { events.push({ type: "ctrl-c" }); i++; continue; }
