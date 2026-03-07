@@ -7,7 +7,7 @@
 
 import type { RenderState } from "./state";
 import { isStreaming } from "./state";
-import { ensureCurrentBlock } from "./messages";
+import { ensureCurrentBlock, createPendingAI } from "./messages";
 import type { SystemMessage } from "./messages";
 import { updateConversationList, updateConversation, syncSelectedIndex } from "./sidebar";
 import { theme } from "./theme";
@@ -46,6 +46,11 @@ export function handleEvent(
 
     case "streaming_started": {
       if (event.convId !== state.convId) break;
+      // Late-joining client: create pendingAI so future chunks are captured.
+      // Original client already has pendingAI from handleSubmit.
+      if (!state.pendingAI) {
+        state.pendingAI = createPendingAI(Date.now(), event.model);
+      }
       break;
     }
 
@@ -120,7 +125,11 @@ export function handleEvent(
     case "message_complete": {
       if (event.convId !== state.convId) break;
       if (state.pendingAI) {
+        // Use the daemon's canonical data — catches anything a late-joining
+        // client missed during streaming.
+        state.pendingAI.blocks = event.blocks;
         state.pendingAI.metadata.endedAt = event.endedAt;
+        state.pendingAI.metadata.tokens = event.tokens;
         state.messages.push(state.pendingAI);
         state.pendingAI = null;
       }

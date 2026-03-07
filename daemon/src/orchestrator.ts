@@ -185,6 +185,7 @@ export async function orchestrateSendMessage(
       convId,
       blocks: result.blocks,
       endedAt,
+      tokens: result.tokens,
     });
 
     log("info", `orchestrator: message complete for ${convId} (${result.tokens} tokens, ${result.blocks.length} blocks, ${endedAt - startedAt}ms)`);

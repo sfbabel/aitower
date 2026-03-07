@@ -149,6 +149,11 @@ export function createHandler(server: DaemonServer) {
           contextTokens: data.contextTokens,
         });
         server.subscribe(client, data.convId);
+        // If the conversation is actively streaming, tell the late-joining client
+        // so it creates pendingAI and picks up future chunks.
+        if (convStore.isStreaming(data.convId)) {
+          server.sendTo(client, { type: "streaming_started", convId: data.convId, model: data.model });
+        }
         // Clear unread when a client views the conversation
         if (convStore.clearUnread(data.convId)) {
           server.broadcast({ type: "conversation_updated", summary: convStore.getSummary(data.convId)! });

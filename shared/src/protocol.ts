@@ -189,6 +189,7 @@ export interface MessageCompleteEvent {
   convId: string;
   blocks: Block[];
   endedAt: number;
+  tokens: number;
 }
 
 export interface UsageUpdateEvent {
