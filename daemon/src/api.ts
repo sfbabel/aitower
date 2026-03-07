@@ -8,6 +8,7 @@
 import { randomBytes, randomUUID } from "crypto";
 import { loadAuth, isTokenExpired, saveAuth } from "./store";
 import { refreshTokens, AuthError } from "./auth";
+import { injectToolBreakpoints, injectMessageBreakpoints } from "./cache";
 import { log } from "./log";
 import type { ModelId, ApiMessage, ApiContentBlock } from "./messages";
 export type { ApiMessage, ApiContentBlock };
@@ -133,11 +134,11 @@ function buildRequest(
     : { type: "enabled", budget_tokens: 10000 };
 
   const body: Record<string, unknown> = {
-    model: MODEL_IDS[model], messages, max_tokens: maxTokens,
-    thinking, stream: true,
+    model: MODEL_IDS[model], messages: injectMessageBreakpoints(messages),
+    max_tokens: maxTokens, thinking, stream: true,
     metadata: { user_id: getMetadataUserId() },
   };
-  if (tools && tools.length > 0) body.tools = tools;
+  if (tools && tools.length > 0) body.tools = injectToolBreakpoints(tools);
   if (system) {
     body.system = [{ type: "text", text: system, cache_control: { type: "ephemeral" } }];
   }
