@@ -27,7 +27,7 @@ import { processKey, copyToClipboard, pasteFromClipboard, type VimContext } from
 import { clampNormal } from "./vim/buffer";
 import { pushUndo, markInsertEntry, commitInsertSession, undo as undoFn, redo as redoFn } from "./undo";
 import {
-  applyHistoryAction, stripAnsi, ensureCursorVisible, placeAtBottom,
+  applyHistoryAction, stripAnsi, ensureCursorVisible, placeAtVisibleBottom,
   handleHistoryFind as historyFindHandler,
   getHistoryVisualSelection,
   scrollHalfPageWithCursor, scrollFullPageWithCursor, scrollLineWithStickyCursor,
@@ -95,7 +95,7 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
         state.panelFocus = "chat";
         state.chatFocus = "history";
         state.vim.mode = "normal";
-        state.historyCursor = placeAtBottom(state.historyLines);
+        state.historyCursor = placeAtVisibleBottom(state);
       }
       return { type: "handled" };
     case "sidebar_next":

@@ -11,7 +11,7 @@ import type { KeyEvent } from "./input";
 import type { Action } from "./keybinds";
 import type { RenderState } from "./state";
 import {
-  stripAnsi, clampCursor,
+  stripAnsi, clampCol, clampCursor,
   charLeft, charRight, lineUp, lineDown, lineStart, lineEnd,
   bufferStart, bufferEnd,
   wordForward, wordBackward, wordEnd,
@@ -235,6 +235,24 @@ export function getHistoryVisualSelection(state: RenderState): string {
   result.push(lastPlain.slice(0, lastCol + 1).trimStart());
 
   return result.join("\n");
+}
+
+/**
+ * Place the cursor at the bottom of the currently *visible* viewport.
+ * Unlike placeAtBottom (which always targets the absolute last line),
+ * this respects scrollOffset so the user doesn't lose their scroll position.
+ */
+export function placeAtVisibleBottom(state: RenderState): HistoryCursor {
+  const lines = state.historyLines;
+  if (lines.length === 0) return { row: 0, col: 0 };
+
+  const { messageAreaHeight } = state.layout;
+  const totalLines = lines.length;
+
+  const viewStart = Math.max(0, totalLines - messageAreaHeight - state.scrollOffset);
+  const viewEnd = Math.min(totalLines - 1, viewStart + messageAreaHeight - 1);
+
+  return { row: viewEnd, col: clampCol(0, lines, viewEnd) };
 }
 
 /** Adjust scrollOffset so the cursor row is within the visible message area. */
