@@ -129,17 +129,18 @@ export function handleEvent(
 
     case "streaming_stopped": {
       if (event.convId !== state.convId) break;
+      // On normal completion, message_complete already finalized pendingAI.
+      // On abort/error, pendingAI is still live — finalize with persisted blocks.
       if (state.pendingAI) {
-        // On abort/error: replace rendered blocks with what the daemon actually persisted
-        if (event.persistedBlocks) {
+        if (event.persistedBlocks !== undefined) {
           state.pendingAI.blocks = event.persistedBlocks;
         }
         if (state.pendingAI.blocks.length > 0) {
           state.pendingAI.metadata.endedAt ??= Date.now();
           state.messages.push(state.pendingAI);
         }
+        state.pendingAI = null;
       }
-      state.pendingAI = null;
 
       // Flush system messages that arrived during streaming (after the AI message)
       for (const msg of state.systemMessageBuffer) {
@@ -150,6 +151,8 @@ export function handleEvent(
     }
 
     case "error": {
+      // Only show errors for the current conversation (or unscoped errors)
+      if (event.convId && event.convId !== state.convId) break;
       const sysMsg: SystemMessage = { role: "system", text: `✗ ${event.message}`, color: theme.error, metadata: null };
       if (isStreaming(state)) {
         state.systemMessageBuffer.push(sysMsg);

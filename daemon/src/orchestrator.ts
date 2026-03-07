@@ -56,13 +56,10 @@ export async function orchestrateSendMessage(
   // Pinned conversations don't change position — don't bump updatedAt
   if (!conv.pinned) conv.updatedAt = Date.now();
 
-  // Update sidebar immediately with the user's message as preview
-  server.broadcast({ type: "conversation_updated", summary: convStore.getSummary(convId)! });
-
   const ac = new AbortController();
   convStore.setActiveJob(convId, ac);
 
-  // Broadcast streaming indicator to all clients (sidebar)
+  // Broadcast sidebar update (user message preview + streaming indicator)
   server.broadcast({ type: "conversation_updated", summary: convStore.getSummary(convId)! });
   server.sendToSubscribers(convId, { type: "streaming_started", convId, model: conv.model });
 
