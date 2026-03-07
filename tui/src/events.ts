@@ -49,7 +49,7 @@ export function handleEvent(
       // Late-joining client: create pendingAI so future chunks are captured.
       // Original client already has pendingAI from handleSubmit.
       if (!state.pendingAI) {
-        state.pendingAI = createPendingAI(Date.now(), event.model);
+        state.pendingAI = createPendingAI(event.startedAt, event.model);
       }
       // Populate with accumulated blocks from daemon (late-join catch-up)
       if (event.blocks && event.blocks.length > 0 && state.pendingAI.blocks.length === 0) {

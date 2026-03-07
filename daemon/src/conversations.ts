@@ -20,6 +20,8 @@ const chunkCounters = new Map<string, number>();
 const unread = new Set<string>();
 /** Accumulated display blocks for in-flight streams (for late-joining clients). */
 const streamingBlocks = new Map<string, Block[]>();
+/** Original startedAt timestamp per streaming job (for late-joining clients). */
+const streamingStartedAt = new Map<string, number>();
 
 const CHUNK_SAVE_INTERVAL = 5;
 
@@ -211,8 +213,9 @@ export function isStreaming(convId: string): boolean {
   return activeJobs.has(convId);
 }
 
-export function setActiveJob(convId: string, ac: AbortController): void {
+export function setActiveJob(convId: string, ac: AbortController, startedAt: number): void {
   activeJobs.set(convId, ac);
+  streamingStartedAt.set(convId, startedAt);
 }
 
 export function getActiveJob(convId: string): AbortController | undefined {
@@ -221,6 +224,11 @@ export function getActiveJob(convId: string): AbortController | undefined {
 
 export function clearActiveJob(convId: string): void {
   activeJobs.delete(convId);
+  streamingStartedAt.delete(convId);
+}
+
+export function getStreamingStartedAt(convId: string): number | undefined {
+  return streamingStartedAt.get(convId);
 }
 
 // ── Streaming blocks (accumulated display blocks for late-joiners) ──

@@ -60,12 +60,12 @@ export async function orchestrateSendMessage(
   server.sendToSubscribersExcept(convId, { type: "user_message", convId, text }, client);
 
   const ac = new AbortController();
-  convStore.setActiveJob(convId, ac);
+  convStore.setActiveJob(convId, ac, startedAt);
   convStore.initStreamingBlocks(convId);
 
   // Broadcast sidebar update (user message preview + streaming indicator)
   server.broadcast({ type: "conversation_updated", summary: convStore.getSummary(convId)! });
-  server.sendToSubscribers(convId, { type: "streaming_started", convId, model: conv.model });
+  server.sendToSubscribers(convId, { type: "streaming_started", convId, model: conv.model, startedAt });
 
   // System messages are persisted but never sent to the AI
   const apiMessages = conv.messages

@@ -127,6 +127,8 @@ export interface StreamingStartedEvent {
   type: "streaming_started";
   convId: string;
   model: ModelId;
+  /** When the AI started processing. Lets late-joining clients show the correct elapsed time. */
+  startedAt: number;
   /** Accumulated blocks so far — included for late-joining clients. */
   blocks?: Block[];
 }

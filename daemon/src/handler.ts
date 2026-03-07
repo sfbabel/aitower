@@ -156,6 +156,7 @@ export function createHandler(server: DaemonServer) {
             type: "streaming_started",
             convId: data.convId,
             model: data.model,
+            startedAt: convStore.getStreamingStartedAt(data.convId) ?? Date.now(),
             blocks: convStore.getStreamingBlocks(data.convId) ?? [],
           });
         }
