@@ -72,7 +72,8 @@ export async function orchestrateSendMessage(
     }));
 
   // Agent state for abort recovery — the agent populates completedMessages
-  // after each full round. partialContent only tracks the in-flight round.
+  // after each full round. partialContent tracks the in-flight round only
+  // (cleared via onRoundComplete between rounds).
   const agentState: AgentState = { completedMessages: [], tokens: 0 };
   const partialContent: import("./messages").ApiContentBlock[] = [];
   /** Blocks that survived persistence on abort/error — sent to TUI so it can trim display. */
@@ -136,6 +137,11 @@ export async function orchestrateSendMessage(
       server.sendToSubscribers(convId, { type: "context_update", convId, contextTokens });
     },
     onHeaders: ext.onHeaders,
+    onRoundComplete() {
+      // Clear partial content — completed rounds are tracked via agentState.completedMessages.
+      // Without this, partialContent accumulates across rounds and abort would double-persist.
+      partialContent.length = 0;
+    },
   };
 
   try {

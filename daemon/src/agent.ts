@@ -34,6 +34,8 @@ export interface AgentCallbacks {
   onContextUpdate(contextTokens: number): void;
   /** Response headers received (fires once per API round, carries rate-limit info). */
   onHeaders(headers: Headers): void;
+  /** A tool-use round completed — all tool results received, next API call starting. */
+  onRoundComplete?(): void;
 }
 
 // ── Tool execution ──────────────────────────────────────────────────
@@ -241,6 +243,7 @@ export async function runAgentLoop(
       state.completedMessages = [...newMessages];
       state.tokens = totalOutputTokens;
     }
+    callbacks.onRoundComplete?.();
     // Continue loop → next API call with tool results
   }
 
