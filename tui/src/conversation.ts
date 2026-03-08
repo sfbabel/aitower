@@ -141,9 +141,13 @@ export function buildMessageLines(state: RenderState, availableWidth: number): s
   const contentWidth = availableWidth - 4;
   const lines: string[] = [];
 
+  let firstUser = true;
   for (const msg of state.messages) {
     if (msg.role === "user") {
+      if (!firstUser) lines.push("");  // top margin (skip for first)
       lines.push(...renderUserMessage(msg.text, availableWidth));
+      lines.push("");                  // bottom margin
+      firstUser = false;
     } else if (msg.role === "assistant") {
       // AI messages: no top or bottom margin
       lines.push(...renderAIMessage(msg, contentWidth, state.toolRegistry, state.showToolOutput));
