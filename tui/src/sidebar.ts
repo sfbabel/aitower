@@ -44,6 +44,7 @@ export type SidebarKeyResult =
   | { type: "delete_conversation"; convId: string }
   | { type: "mark_conversation"; convId: string; marked: boolean }
   | { type: "pin_conversation"; convId: string; pinned: boolean }
+  | { type: "move_conversation"; convId: string; direction: "up" | "down" }
   | { type: "unhandled" };
 
 export function handleSidebarKey(key: KeyEvent, sidebar: SidebarState): SidebarKeyResult {
@@ -109,17 +110,41 @@ export function handleSidebarAction(action: string, sidebar: SidebarState): Side
       if (sidebar.conversations.length === 0) return { type: "handled" };
       const conv = sidebar.conversations[sidebar.selectedIndex];
       if (!conv) return { type: "handled" };
-      // Optimistic toggle — unpin bumps updatedAt (matches daemon behavior)
       const newPinned = !conv.pinned;
-      if (!newPinned && conv.pinned) conv.updatedAt = Date.now();
       conv.pinned = newPinned;
-      // Re-sort: pinned first, then by updatedAt desc
+      // Re-sort: pinned first, then by sortOrder
       sidebar.conversations.sort((a, b) => {
         if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-        return b.updatedAt - a.updatedAt;
+        return a.sortOrder - b.sortOrder;
       });
       syncSelectedIndex(sidebar);
       return { type: "pin_conversation", convId: conv.id, pinned: newPinned };
+    }
+
+    case "move_up":
+    case "move_down": {
+      if (sidebar.conversations.length === 0) return { type: "handled" };
+      const conv = sidebar.conversations[sidebar.selectedIndex];
+      if (!conv) return { type: "handled" };
+      const direction = action === "move_up" ? "up" : "down";
+      const targetIdx = direction === "up"
+        ? sidebar.selectedIndex - 1
+        : sidebar.selectedIndex + 1;
+      if (targetIdx < 0 || targetIdx >= sidebar.conversations.length) return { type: "handled" };
+      const target = sidebar.conversations[targetIdx];
+      // Don't cross the pinned/unpinned boundary
+      if (target.pinned !== conv.pinned) return { type: "handled" };
+      // Optimistic swap
+      sidebar.conversations[sidebar.selectedIndex] = target;
+      sidebar.conversations[targetIdx] = conv;
+      // Swap sortOrder values
+      const tmp = conv.sortOrder;
+      conv.sortOrder = target.sortOrder;
+      target.sortOrder = tmp;
+      // Follow the moved item
+      sidebar.selectedIndex = targetIdx;
+      sidebar.selectedId = conv.id;
+      return { type: "move_conversation", convId: conv.id, direction };
     }
 
     case "focus_prompt":
@@ -154,7 +179,7 @@ export function updateConversation(sidebar: SidebarState, summary: ConversationS
   }
   sidebar.conversations.sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-    return b.updatedAt - a.updatedAt;
+    return a.sortOrder - b.sortOrder;
   });
   syncSelectedIndex(sidebar);
 }

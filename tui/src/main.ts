@@ -150,6 +150,9 @@ function handleKey(key: KeyEvent): void {
     case "pin_conversation":
       daemon.pinConversation(result.convId, result.pinned);
       break;
+    case "move_conversation":
+      daemon.moveConversation(result.convId, result.direction);
+      break;
     case "handled":
       break;
   }

@@ -40,6 +40,8 @@ export type Action =
   | "delete"
   | "mark"
   | "pin"
+  | "move_up"
+  | "move_down"
   // Scrolling
   | "scroll_line_up"
   | "scroll_line_down"
@@ -132,6 +134,8 @@ const NAV_BINDS: Record<string, Action> = {
   "char:a":     "focus_prompt",
   "char:d":     "delete",
   "char:D":     "delete",
+  "char:e":     "move_up",
+  "char:E":     "move_down",
 };
 
 // ── Context ─────────────────────────────────────────────────────────

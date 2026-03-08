@@ -89,6 +89,13 @@ export interface PinConversationCommand {
   pinned: boolean;
 }
 
+export interface MoveConversationCommand {
+  type: "move_conversation";
+  reqId?: string;
+  convId: string;
+  direction: "up" | "down";
+}
+
 export type Command =
   | PingCommand
   | NewConversationCommand
@@ -101,7 +108,8 @@ export type Command =
   | LoadConversationCommand
   | DeleteConversationCommand
   | MarkConversationCommand
-  | PinConversationCommand;
+  | PinConversationCommand
+  | MoveConversationCommand;
 
 // ── Events (daemon → client) ────────────────────────────────────────
 
@@ -250,6 +258,11 @@ export interface ConversationPinnedEvent {
   pinned: boolean;
 }
 
+export interface ConversationMovedEvent {
+  type: "conversation_moved";
+  conversations: ConversationSummary[];
+}
+
 export interface UserMessageEvent {
   type: "user_message";
   convId: string;
@@ -296,6 +309,7 @@ export type Event =
   | ConversationDeletedEvent
   | ConversationMarkedEvent
   | ConversationPinnedEvent
+  | ConversationMovedEvent
   | UserMessageEvent
   | SystemMessageEvent
   | ToolsAvailableEvent

@@ -122,6 +122,10 @@ export class DaemonClient {
     this.send({ type: "pin_conversation", convId, pinned });
   }
 
+  moveConversation(convId: string, direction: "up" | "down"): void {
+    this.send({ type: "move_conversation", convId, direction });
+  }
+
   listConversations(): void {
     this.send({ type: "list_conversations" });
   }

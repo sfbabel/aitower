@@ -15,7 +15,7 @@ import type { Conversation, StoredMessage, ApiMessage, ModelId, ConversationSumm
 
 // ── Schema version ──────────────────────────────────────────────────
 
-const CURRENT_VERSION = 5;
+const CURRENT_VERSION = 6;
 
 interface ConversationFileV1 {
   version: 1;
@@ -68,7 +68,20 @@ interface ConversationFileV5 {
   pinned: boolean;
 }
 
-type ConversationFile = ConversationFileV5;
+interface ConversationFileV6 {
+  version: 6;
+  id: string;
+  model: ModelId;
+  messages: StoredMessage[];
+  createdAt: number;
+  updatedAt: number;
+  lastContextTokens: number | null;
+  marked: boolean;
+  pinned: boolean;
+  sortOrder: number;
+}
+
+type ConversationFile = ConversationFileV6;
 
 // ── Migrations ──────────────────────────────────────────────────────
 
@@ -112,6 +125,15 @@ function migrateV4toV5(data: ConversationFileV4): ConversationFileV5 {
   };
 }
 
+/** v5 → v6: Add sortOrder. Use negative updatedAt so more recent = lower value = first. */
+function migrateV5toV6(data: ConversationFileV5): ConversationFileV6 {
+  return {
+    ...data,
+    version: 6,
+    sortOrder: -data.updatedAt,
+  };
+}
+
 function migrate(data: Record<string, unknown>): ConversationFile {
   let version = (data.version as number) ?? 1;
 
@@ -133,6 +155,11 @@ function migrate(data: Record<string, unknown>): ConversationFile {
   if (version === 4) {
     data = migrateV4toV5(data as unknown as ConversationFileV4) as unknown as Record<string, unknown>;
     version = 5;
+  }
+
+  if (version === 5) {
+    data = migrateV5toV6(data as unknown as ConversationFileV5) as unknown as Record<string, unknown>;
+    version = 6;
   }
 
   if (version === CURRENT_VERSION) {
@@ -170,6 +197,7 @@ function toFile(conv: Conversation): ConversationFile {
     lastContextTokens: conv.lastContextTokens,
     marked: conv.marked,
     pinned: conv.pinned,
+    sortOrder: conv.sortOrder,
   };
 }
 
@@ -183,6 +211,7 @@ function fromFile(file: ConversationFile): Conversation {
     lastContextTokens: file.lastContextTokens,
     marked: file.marked,
     pinned: file.pinned,
+    sortOrder: file.sortOrder,
   };
 }
 
@@ -242,16 +271,17 @@ export function loadAll(): ConversationSummary[] {
         pinned: file.pinned,
         streaming: false,
         unread: false,
+        sortOrder: file.sortOrder,
       });
     } catch (err) {
       log("error", `persistence: failed to load summary for ${filename}: ${err}`);
     }
   }
 
-  // Pinned first (stable order among pinned), then unpinned by updatedAt desc
+  // Pinned first (by sortOrder), then unpinned (by sortOrder)
   summaries.sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-    return b.updatedAt - a.updatedAt;
+    return a.sortOrder - b.sortOrder;
   });
   return summaries;
 }

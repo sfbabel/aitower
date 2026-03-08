@@ -216,16 +216,19 @@ export function handleEvent(
     case "conversation_pinned": {
       const conv = state.sidebar.conversations.find(c => c.id === event.convId);
       if (conv) {
-        // Unpin bumps updatedAt so it sorts to top of unpinned
-        if (!event.pinned && conv.pinned) conv.updatedAt = Date.now();
         conv.pinned = event.pinned;
-        // Re-sort: pinned first, then by updatedAt desc
+        // Re-sort: pinned first, then by sortOrder
         state.sidebar.conversations.sort((a, b) => {
           if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-          return b.updatedAt - a.updatedAt;
+          return a.sortOrder - b.sortOrder;
         });
         syncSelectedIndex(state.sidebar);
       }
+      break;
+    }
+
+    case "conversation_moved": {
+      updateConversationList(state.sidebar, event.conversations);
       break;
     }
 

@@ -130,6 +130,16 @@ export function createHandler(server: DaemonServer) {
         const ok = convStore.pin(cmd.convId, cmd.pinned);
         if (ok) {
           server.broadcast({ type: "conversation_pinned", convId: cmd.convId, pinned: cmd.pinned });
+          // Broadcast full list so all clients get the updated sortOrder
+          server.broadcast({ type: "conversation_moved", conversations: convStore.listSummaries() });
+        }
+        break;
+      }
+
+      case "move_conversation": {
+        const ok = convStore.move(cmd.convId, cmd.direction);
+        if (ok) {
+          server.broadcast({ type: "conversation_moved", conversations: convStore.listSummaries() });
         }
         break;
       }

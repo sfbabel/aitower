@@ -100,6 +100,7 @@ export interface ConversationSummary {
   pinned: boolean;
   streaming: boolean;
   unread: boolean;
+  sortOrder: number;
 }
 
 // ── Tool display info (daemon → TUI on connect) ────────────────────

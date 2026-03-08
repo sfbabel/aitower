@@ -34,7 +34,12 @@ export function generateId(): string {
 // ── Conversations ───────────────────────────────────────────────────
 
 export function create(id: string, model: ModelId): Conversation {
-  const conv = createConversation(id, model);
+  // New conversations go to the top of unpinned: find min sortOrder and subtract 1
+  let minOrder = 0;
+  for (const c of conversations.values()) {
+    if (!c.pinned && c.sortOrder < minOrder) minOrder = c.sortOrder;
+  }
+  const conv = createConversation(id, model, minOrder - 1);
   conversations.set(id, conv);
   markDirty(id);
   flush(id);
@@ -125,10 +130,10 @@ export function listSummaries(): ConversationSummary[] {
     const s = getSummary(conv.id);
     if (s) summaries.push(s);
   }
-  // Pinned first (stable order among pinned), then unpinned by updatedAt desc
+  // Pinned first (by sortOrder), then unpinned (by sortOrder)
   summaries.sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-    return b.updatedAt - a.updatedAt;
+    return a.sortOrder - b.sortOrder;
   });
   return summaries;
 }
@@ -147,11 +152,52 @@ export function mark(id: string, marked: boolean): boolean {
 export function pin(id: string, pinned: boolean): boolean {
   const conv = conversations.get(id);
   if (!conv) return false;
-  // Unpinning: bump updatedAt so it appears at the top of unpinned
-  if (!pinned && conv.pinned) conv.updatedAt = Date.now();
   conv.pinned = pinned;
+  if (pinned) {
+    // Pinning: place at the bottom of the pinned section
+    let maxOrder = -Infinity;
+    for (const c of conversations.values()) {
+      if (c.pinned && c.id !== id && c.sortOrder > maxOrder) maxOrder = c.sortOrder;
+    }
+    conv.sortOrder = maxOrder === -Infinity ? 0 : maxOrder + 1;
+  } else {
+    // Unpinning: place at the top of the unpinned section
+    let minOrder = 0;
+    for (const c of conversations.values()) {
+      if (!c.pinned && c.id !== id && c.sortOrder < minOrder) minOrder = c.sortOrder;
+    }
+    conv.sortOrder = minOrder - 1;
+  }
   markDirty(id);
   flush(id);
+  return true;
+}
+
+/** Move a conversation up or down within its section (pinned or unpinned). */
+export function move(id: string, direction: "up" | "down"): boolean {
+  const summaries = listSummaries();
+  const idx = summaries.findIndex(s => s.id === id);
+  if (idx === -1) return false;
+
+  const current = summaries[idx];
+  const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+  if (targetIdx < 0 || targetIdx >= summaries.length) return false;
+
+  const target = summaries[targetIdx];
+  // Don't cross the pinned/unpinned boundary
+  if (target.pinned !== current.pinned) return false;
+
+  // Swap sortOrder values
+  const currentConv = conversations.get(id)!;
+  const targetConv = conversations.get(target.id)!;
+  const tmp = currentConv.sortOrder;
+  currentConv.sortOrder = targetConv.sortOrder;
+  targetConv.sortOrder = tmp;
+
+  markDirty(id);
+  markDirty(target.id);
+  flush(id);
+  flush(target.id);
   return true;
 }
 
@@ -176,6 +222,7 @@ export function getSummary(id: string): ConversationSummary | null {
     pinned: conv.pinned,
     streaming: activeJobs.has(conv.id),
     unread: unread.has(conv.id),
+    sortOrder: conv.sortOrder,
   };
 }
 

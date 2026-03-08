@@ -43,9 +43,10 @@ export interface Conversation {
   lastContextTokens: number | null;
   marked: boolean;
   pinned: boolean;
+  sortOrder: number;
 }
 
-export function createConversation(id: string, model: ModelId): Conversation {
+export function createConversation(id: string, model: ModelId, sortOrder?: number): Conversation {
   const now = Date.now();
   return {
     id,
@@ -56,5 +57,6 @@ export function createConversation(id: string, model: ModelId): Conversation {
     lastContextTokens: null,
     marked: false,
     pinned: false,
+    sortOrder: sortOrder ?? -now,
   };
 }
