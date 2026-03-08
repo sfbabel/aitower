@@ -1,14 +1,65 @@
 /**
  * Bash tool — execute shell commands.
+ *
+ * Output protection: when stdout+stderr exceeds ~30K characters, the full
+ * output is saved to a temp file and a head+tail preview is returned.
+ * The agent can use the read tool to paginate through the full output.
  */
 
 import { spawn } from "child_process";
+import { writeFileSync } from "fs";
 import type { Tool, ToolResult, ToolSummary } from "./types";
+import { MAX_OUTPUT_CHARS } from "./util";
 
 // ── Constants ──────────────────────────────────────────────────────
 
 const DEFAULT_TIMEOUT_MS = 3_600_000; // 1 hour
-const MAX_OUTPUT_BYTES = 1_000_000;   // 1MB truncation limit
+const MAX_OUTPUT_BYTES = 1_000_000;   // 1MB process capture limit
+const HEAD_BUDGET = 20_000;           // chars for head preview
+const TAIL_BUDGET = 8_000;            // chars for tail preview
+
+// ── Output limiting ───────────────────────────────────────────────
+
+/**
+ * When output is too large for the conversation context, save the full
+ * text to a temp file and return a head+tail preview with the file path.
+ */
+function spillAndPreview(output: string, byteTruncated: boolean): string {
+  const spillPath = `/tmp/exocortex-bash-${Date.now()}.txt`;
+  writeFileSync(spillPath, output);
+
+  const lines = output.split("\n");
+  const totalLines = lines.length;
+
+  // Head: lines from the start, up to HEAD_BUDGET chars
+  let headEnd = 0;
+  let headChars = 0;
+  while (headEnd < totalLines) {
+    const cost = lines[headEnd].length + 1;
+    if (headChars + cost > HEAD_BUDGET && headEnd > 0) break;
+    headChars += cost;
+    headEnd++;
+  }
+
+  // Tail: lines from the end, up to TAIL_BUDGET chars
+  let tailStart = totalLines;
+  let tailChars = 0;
+  while (tailStart > headEnd) {
+    const cost = lines[tailStart - 1].length + 1;
+    if (tailChars + cost > TAIL_BUDGET) break;
+    tailStart--;
+    tailChars += cost;
+  }
+
+  const omitted = tailStart - headEnd;
+  const head = lines.slice(0, headEnd).join("\n");
+  const tail = tailStart < totalLines ? lines.slice(tailStart).join("\n") : "";
+
+  const truncNote = byteTruncated ? ", byte-truncated at 1MB" : "";
+  const separator = `\n\n... ${omitted.toLocaleString()} lines omitted (${totalLines.toLocaleString()} total${truncNote}). Full output: ${spillPath}\nUse the read tool with offset/limit to browse.\n\n`;
+
+  return tail ? head + separator + tail : head + separator;
+}
 
 // ── Execution ──────────────────────────────────────────────────────
 
@@ -28,13 +79,13 @@ async function executeBash(input: Record<string, unknown>): Promise<ToolResult> 
 
     const chunks: Buffer[] = [];
     let totalBytes = 0;
-    let truncated = false;
+    let byteTruncated = false;
 
     function collect(data: Buffer): void {
-      if (truncated) return;
+      if (byteTruncated) return;
       totalBytes += data.length;
       if (totalBytes > MAX_OUTPUT_BYTES) {
-        truncated = true;
+        byteTruncated = true;
         chunks.push(data.subarray(0, MAX_OUTPUT_BYTES - (totalBytes - data.length)));
       } else {
         chunks.push(data);
@@ -50,10 +101,18 @@ async function executeBash(input: Record<string, unknown>): Promise<ToolResult> 
 
     proc.on("close", (code) => {
       let output = Buffer.concat(chunks).toString("utf8");
-      if (truncated) output += "\n... (output truncated)";
+
+      // If output exceeds context budget, spill to file and return preview
+      if (output.length > MAX_OUTPUT_CHARS) {
+        output = spillAndPreview(output, byteTruncated);
+      } else if (byteTruncated) {
+        output += "\n... (output byte-truncated at 1MB)";
+      }
+
       if (code !== 0 && code !== null) {
         output += `\n(exit code ${code})`;
       }
+
       resolve({ output, isError: code !== 0 && code !== null });
     });
   });
