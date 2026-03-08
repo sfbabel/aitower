@@ -42,6 +42,7 @@ function renderBlock(block: Block, contentWidth: number, toolRegistry: ToolDispl
 
   switch (block.type) {
     case "thinking": {
+      if (!block.text.trim()) break;
       for (const wl of wordWrap(block.text, contentWidth)) {
         lines.push(`  ${theme.dim}${theme.italic}${wl}${theme.reset}`);
       }
