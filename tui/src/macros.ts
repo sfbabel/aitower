@@ -43,7 +43,7 @@ export const MACRO_MAP: Record<string, string> = {
   "/thoughts": "Can you tell me your thoughts on this?",
   "/long": "This is a long running task, work tirelessly until you can verify that everything is complete and correct",
   "/diagnose": "Can you pinpoint the exact cause and tell me your diagnosis?",
-  "/worktree": "Work in a git worktree for this task. When I say I'm satisfied, rebase onto the original branch, resolve conflicts, merge back, and clean up.",
+  "/worktree": "Work in a git worktree for this task. Create it with `git worktree add .worktrees/<name> -b <name> HEAD` from the repo root. When I say I'm satisfied, merge back to main and clean up: run `git worktree remove .worktrees/<name>`, delete the branch with `git branch -d <name>`, and remove the leftover config dirs `~/.config/exocortex/runtime/<name>/` and `~/.config/exocortex/instances/<name>/`.",
 };
 
 /** Optional sub-arguments for macros (keyed by macro name). */
