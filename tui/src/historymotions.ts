@@ -51,6 +51,24 @@ export function clampCol(col: number, lines: string[], row: number): number {
   return Math.max(start, Math.min(col, end));
 }
 
+// ── Logical line groups ──────────────────────────────────────────
+
+/**
+ * Get the range of visual rows that belong to the same logical line as `row`.
+ * A logical line is a group of consecutive visual rows where all but the
+ * first have wrapCont[r] === true (they are word-wrap continuations).
+ */
+export function logicalLineRange(
+  row: number,
+  wrapCont: boolean[],
+): { first: number; last: number } {
+  let first = row;
+  while (first > 0 && wrapCont[first]) first--;
+  let last = row;
+  while (last < wrapCont.length - 1 && wrapCont[last + 1]) last++;
+  return { first, last };
+}
+
 // ── Basic motions ─────────────────────────────────────────────────
 
 export function charLeft(cursor: HistoryCursor, lines: string[]): HistoryCursor {
@@ -75,14 +93,16 @@ export function lineDown(cursor: HistoryCursor, lines: string[]): HistoryCursor 
   return { row: newRow, col: clampCol(cursor.col, lines, newRow) };
 }
 
-export function lineStart(cursor: HistoryCursor, lines: string[]): HistoryCursor {
-  const { start } = contentBounds(stripAnsi(lines[cursor.row] ?? ""));
-  return { row: cursor.row, col: start };
+export function lineStart(cursor: HistoryCursor, lines: string[], wrapCont?: boolean[]): HistoryCursor {
+  const row = wrapCont ? logicalLineRange(cursor.row, wrapCont).first : cursor.row;
+  const { start } = contentBounds(stripAnsi(lines[row] ?? ""));
+  return { row, col: start };
 }
 
-export function lineEnd(cursor: HistoryCursor, lines: string[]): HistoryCursor {
-  const { end } = contentBounds(stripAnsi(lines[cursor.row] ?? ""));
-  return { row: cursor.row, col: end };
+export function lineEnd(cursor: HistoryCursor, lines: string[], wrapCont?: boolean[]): HistoryCursor {
+  const row = wrapCont ? logicalLineRange(cursor.row, wrapCont).last : cursor.row;
+  const { end } = contentBounds(stripAnsi(lines[row] ?? ""));
+  return { row, col: end };
 }
 
 export function bufferStart(lines: string[]): HistoryCursor {
