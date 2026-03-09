@@ -57,9 +57,18 @@ export function remove(id: string): boolean {
   if (existed) {
     dirty.delete(id);
     streaming.clearActiveJob(id);
-    persistence.deleteFile(id);
+    persistence.trashFile(id);
   }
   return existed;
+}
+
+/** Restore the most recently trashed conversation. Returns it, or null if trash is empty. */
+export function undoDelete(): Conversation | null {
+  const conv = persistence.restoreLatest();
+  if (!conv) return null;
+  conversations.set(conv.id, conv);
+  log("info", `conversations: restored ${conv.id} from trash`);
+  return conv;
 }
 
 export function setModel(id: string, model: ModelId): boolean {

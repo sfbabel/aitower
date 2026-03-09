@@ -42,6 +42,7 @@ export type Action =
   | "pin"
   | "move_up"
   | "move_down"
+  | "undo_delete"
   // Scrolling
   | "scroll_line_up"
   | "scroll_line_down"
@@ -136,6 +137,7 @@ const NAV_BINDS: Record<string, Action> = {
   "char:D":     "delete",
   "char:e":     "move_up",
   "char:E":     "move_down",
+  "char:u":     "undo_delete",
 };
 
 // ── Context ─────────────────────────────────────────────────────────

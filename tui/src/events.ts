@@ -190,6 +190,14 @@ export function handleEvent(
       break;
     }
 
+    case "conversation_restored": {
+      updateConversation(state.sidebar, event.summary);
+      // Select the restored conversation in the sidebar
+      state.sidebar.selectedId = event.summary.id;
+      syncSelectedIndex(state.sidebar);
+      break;
+    }
+
     case "conversation_deleted": {
       // Remove from sidebar (in case another client deleted it)
       const idx = state.sidebar.conversations.findIndex(c => c.id === event.convId);

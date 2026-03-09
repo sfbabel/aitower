@@ -156,6 +156,21 @@ export function createHandler(server: DaemonServer) {
         break;
       }
 
+      case "undo_delete": {
+        const restored = convStore.undoDelete();
+        if (restored) {
+          const summary = convStore.getSummary(restored.id);
+          if (summary) {
+            log("info", `handler: restored conversation ${restored.id} from trash`);
+            server.broadcast({ type: "conversation_restored", reqId: cmd.reqId, summary });
+            server.broadcast({ type: "conversation_moved", conversations: convStore.listSummaries() });
+          }
+        } else {
+          server.sendTo(client, { type: "error", reqId: cmd.reqId, message: "Nothing to undo" });
+        }
+        break;
+      }
+
       case "load_conversation": {
         const data = convStore.getDisplayData(cmd.convId);
         if (!data) {

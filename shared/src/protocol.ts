@@ -103,6 +103,11 @@ export interface RenameConversationCommand {
   title: string;
 }
 
+export interface UndoDeleteCommand {
+  type: "undo_delete";
+  reqId?: string;
+}
+
 export type Command =
   | PingCommand
   | NewConversationCommand
@@ -117,7 +122,8 @@ export type Command =
   | MarkConversationCommand
   | PinConversationCommand
   | MoveConversationCommand
-  | RenameConversationCommand;
+  | RenameConversationCommand
+  | UndoDeleteCommand;
 
 // ── Events (daemon → client) ────────────────────────────────────────
 
@@ -254,6 +260,12 @@ export interface ConversationDeletedEvent {
   convId: string;
 }
 
+export interface ConversationRestoredEvent {
+  type: "conversation_restored";
+  reqId?: string;
+  summary: ConversationSummary;
+}
+
 export interface ConversationMarkedEvent {
   type: "conversation_marked";
   convId: string;
@@ -315,6 +327,7 @@ export type Event =
   | ConversationLoadedEvent
   | ConversationUpdatedEvent
   | ConversationDeletedEvent
+  | ConversationRestoredEvent
   | ConversationMarkedEvent
   | ConversationPinnedEvent
   | ConversationMovedEvent

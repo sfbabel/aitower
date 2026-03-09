@@ -108,6 +108,10 @@ export class DaemonClient {
     this.send({ type: "delete_conversation", convId });
   }
 
+  undoDelete(): void {
+    this.send({ type: "undo_delete" });
+  }
+
   markConversation(convId: string, marked: boolean): void {
     this.send({ type: "mark_conversation", convId, marked });
   }

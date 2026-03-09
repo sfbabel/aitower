@@ -2,15 +2,17 @@
  * Conversation persistence — versioned JSON files.
  *
  * Reads/writes conversation files to ~/.config/exocortex/conversations/.
+ * Trash (soft-delete) lives in a sibling trash/ directory with a
+ * stack-ordered trash.json for undo support.
  * Schema is versioned — migrations run on load to upgrade old formats.
  *
- * This is the only file that touches the conversations directory.
+ * This is the only file that touches the conversations and trash directories.
  */
 
 import { join } from "path";
-import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync } from "fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync, renameSync } from "fs";
 import { log } from "./log";
-import { conversationsDir } from "@exocortex/shared/paths";
+import { conversationsDir, trashDir } from "@exocortex/shared/paths";
 import type { Conversation, StoredMessage, ApiMessage, ModelId, ConversationSummary } from "./messages";
 import { sortConversations } from "./messages";
 
@@ -202,6 +204,8 @@ function migrate(data: Record<string, unknown>): ConversationFile {
 // ── Paths ───────────────────────────────────────────────────────────
 
 const CONV_DIR = conversationsDir();
+const TRASH_DIR = trashDir();
+const TRASH_META = join(TRASH_DIR, "trash.json");
 
 function ensureDir(): void {
   if (!existsSync(CONV_DIR)) {
@@ -209,8 +213,33 @@ function ensureDir(): void {
   }
 }
 
+function ensureTrashDir(): void {
+  if (!existsSync(TRASH_DIR)) {
+    mkdirSync(TRASH_DIR, { recursive: true, mode: 0o700 });
+  }
+}
+
 function convPath(id: string): string {
   return join(CONV_DIR, `${id}.json`);
+}
+
+function trashPath(id: string): string {
+  return join(TRASH_DIR, `${id}.json`);
+}
+
+/** Read the trash stack (array of conversation IDs, last = most recent). */
+function readTrashStack(): string[] {
+  try {
+    if (!existsSync(TRASH_META)) return [];
+    return JSON.parse(readFileSync(TRASH_META, "utf-8"));
+  } catch {
+    return [];
+  }
+}
+
+/** Write the trash stack back to disk. */
+function writeTrashStack(stack: string[]): void {
+  writeFileSync(TRASH_META, JSON.stringify(stack, null, 2), { mode: 0o600 });
 }
 
 // ── Serialize / Deserialize ─────────────────────────────────────────
@@ -255,13 +284,51 @@ export function save(conv: Conversation): void {
   writeFileSync(convPath(conv.id), JSON.stringify(file, null, 2), { mode: 0o600 });
 }
 
-/** Delete a conversation file from disk. */
-export function deleteFile(id: string): void {
-  const path = convPath(id);
+/** Move a conversation file to trash instead of deleting it. */
+export function trashFile(id: string): void {
+  const src = convPath(id);
   try {
-    if (existsSync(path)) unlinkSync(path);
+    if (!existsSync(src)) return;
+    ensureTrashDir();
+    const dst = trashPath(id);
+    renameSync(src, dst);
+    const stack = readTrashStack();
+    stack.push(id);
+    writeTrashStack(stack);
+    log("info", `persistence: trashed ${id}`);
   } catch (err) {
-    log("error", `persistence: failed to delete ${id}: ${err}`);
+    log("error", `persistence: failed to trash ${id}: ${err}`);
+  }
+}
+
+/**
+ * Restore the most recently trashed conversation.
+ * Moves the file back to conversations/ and returns the restored conversation,
+ * or null if the trash is empty.
+ */
+export function restoreLatest(): Conversation | null {
+  try {
+    ensureTrashDir();
+    const stack = readTrashStack();
+    if (stack.length === 0) return null;
+
+    const id = stack.pop()!;
+    writeTrashStack(stack);
+
+    const src = trashPath(id);
+    if (!existsSync(src)) {
+      log("warn", `persistence: trashed file missing for ${id}`);
+      return null;
+    }
+
+    ensureDir();
+    const dst = convPath(id);
+    renameSync(src, dst);
+    log("info", `persistence: restored ${id} from trash`);
+    return load(id);
+  } catch (err) {
+    log("error", `persistence: failed to restore from trash: ${err}`);
+    return null;
   }
 }
 

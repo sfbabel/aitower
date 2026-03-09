@@ -89,6 +89,14 @@ export function conversationsDir(): string {
     : join(CONFIG_DIR, "conversations");
 }
 
+/** Trash directory for soft-deleted conversations. Isolated per worktree. */
+export function trashDir(): string {
+  const wt = detectWorktree();
+  return wt
+    ? join(CONFIG_DIR, "instances", wt, "trash")
+    : join(CONFIG_DIR, "trash");
+}
+
 /** The worktree name if in a linked worktree, null otherwise. */
 export function worktreeName(): string | null {
   return detectWorktree();

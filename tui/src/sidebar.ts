@@ -43,6 +43,7 @@ export type SidebarKeyResult =
   | { type: "handled" }
   | { type: "select"; convId: string }
   | { type: "delete_conversation"; convId: string }
+  | { type: "undo_delete" }
   | { type: "mark_conversation"; convId: string; marked: boolean }
   | { type: "pin_conversation"; convId: string; pinned: boolean }
   | { type: "move_conversation"; convId: string; direction: "up" | "down" }
@@ -96,6 +97,9 @@ export function handleSidebarAction(action: string, sidebar: SidebarState): Side
       sidebar.pendingDeleteId = selectedConv.id;
       return { type: "handled" };
     }
+
+    case "undo_delete":
+      return { type: "undo_delete" };
 
     case "mark": {
       if (sidebar.conversations.length === 0) return { type: "handled" };

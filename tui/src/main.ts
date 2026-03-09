@@ -149,6 +149,9 @@ function handleKey(key: KeyEvent): void {
         state.contextTokens = null;
       }
       break;
+    case "undo_delete":
+      daemon.undoDelete();
+      break;
     case "mark_conversation":
       daemon.markConversation(result.convId, result.marked);
       break;

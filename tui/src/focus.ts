@@ -45,6 +45,7 @@ export type KeyResult =
   | { type: "abort" }
   | { type: "load_conversation"; convId: string }
   | { type: "delete_conversation"; convId: string }
+  | { type: "undo_delete" }
   | { type: "mark_conversation"; convId: string; marked: boolean }
   | { type: "pin_conversation"; convId: string; pinned: boolean }
   | { type: "move_conversation"; convId: string; direction: "up" | "down" }
@@ -314,6 +315,11 @@ function handleVimAction(action: string, state: RenderState): KeyResult {
         }
       }
       return { type: "handled" };
+    case "undo_delete":
+      if (state.panelFocus === "sidebar") {
+        return { type: "undo_delete" };
+      }
+      return { type: "handled" };
     case "mark":
       if (state.panelFocus === "sidebar") {
         const result = handleSidebarAction("mark", state.sidebar);
@@ -466,6 +472,8 @@ function handleSidebarFocused(key: KeyEvent, state: RenderState): KeyResult {
       return { type: "load_conversation", convId: result.convId };
     case "delete_conversation":
       return { type: "delete_conversation", convId: result.convId };
+    case "undo_delete":
+      return { type: "undo_delete" };
     case "mark_conversation":
       return { type: "mark_conversation", convId: result.convId, marked: result.marked };
     case "pin_conversation":
