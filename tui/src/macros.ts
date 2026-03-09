@@ -26,6 +26,7 @@ export const MACRO_LIST: CompletionItem[] = [
   { name: "/thoughts", desc: "Tell me your thoughts" },
   { name: "/long", desc: "Work until complete" },
   { name: "/diagnose", desc: "Pinpoint the cause" },
+  { name: "/quality", desc: "Code quality assessment" },
   { name: "/worktree", desc: "Work in a git worktree" },
 ];
 
@@ -43,6 +44,7 @@ export const MACRO_MAP: Record<string, string> = {
   "/thoughts": "Can you tell me your thoughts on this?",
   "/long": "This is a long running task, work tirelessly until you can verify that everything is complete and correct",
   "/diagnose": "Can you pinpoint the exact cause and tell me your diagnosis?",
+  "/quality": "Give your changes a code quality assesment. Is there anything that should be split off into other files, de-duplicated, or made more clear?",
   "/worktree": "Work in a git worktree for this task. Create it with `git worktree add .worktrees/<name> -b <name> HEAD` from the repo root. When I say I'm satisfied, merge back to main and clean up: run `git worktree remove .worktrees/<name>`, delete the branch with `git branch -d <name>`, and remove the leftover config dirs `~/.config/exocortex/runtime/<name>/` and `~/.config/exocortex/instances/<name>/`.",
   "/worktree merge": "Your work in your worktree is good. Merge back into main and clean up after yourself.",
 };
