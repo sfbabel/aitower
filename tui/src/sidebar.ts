@@ -187,8 +187,15 @@ export function syncSelectedIndex(sidebar: SidebarState): void {
       return;
     }
   }
-  // selectedId not found — clamp index
-  sidebar.selectedIndex = Math.max(0, Math.min(sidebar.selectedIndex, sidebar.conversations.length - 1));
+  // selectedId not found — default to the first non-pinned conversation
+  // so the cursor lands in the active (unpinned) section, not on a pinned item.
+  const firstUnpinned = sidebar.conversations.findIndex(c => !c.pinned);
+  if (firstUnpinned !== -1) {
+    sidebar.selectedIndex = firstUnpinned;
+  } else {
+    // All pinned (or empty) — fall back to clamped index
+    sidebar.selectedIndex = Math.max(0, Math.min(sidebar.selectedIndex, sidebar.conversations.length - 1));
+  }
   sidebar.selectedId = sidebar.conversations[sidebar.selectedIndex]?.id ?? null;
 }
 
