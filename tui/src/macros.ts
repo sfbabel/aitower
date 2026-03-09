@@ -44,6 +44,7 @@ export const MACRO_MAP: Record<string, string> = {
   "/long": "This is a long running task, work tirelessly until you can verify that everything is complete and correct",
   "/diagnose": "Can you pinpoint the exact cause and tell me your diagnosis?",
   "/worktree": "Work in a git worktree for this task. Create it with `git worktree add .worktrees/<name> -b <name> HEAD` from the repo root. When I say I'm satisfied, merge back to main and clean up: run `git worktree remove .worktrees/<name>`, delete the branch with `git branch -d <name>`, and remove the leftover config dirs `~/.config/exocortex/runtime/<name>/` and `~/.config/exocortex/instances/<name>/`.",
+  "/worktree merge": "Your work in your worktree is good. Merge back into main and clean up after yourself.",
 };
 
 /** Optional sub-arguments for macros (keyed by macro name). */
@@ -53,6 +54,9 @@ export const MACRO_ARGS: Record<string, CompletionItem[]> = {
   ],
   "/plan": [
     { name: "other", desc: "Draft plan for another instance" },
+  ],
+  "/worktree": [
+    { name: "merge", desc: "Merge worktree back into main" },
   ],
 };
 
