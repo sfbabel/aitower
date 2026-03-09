@@ -32,6 +32,7 @@ import {
   getHistoryVisualSelection,
   scrollHalfPageWithCursor, scrollFullPageWithCursor, scrollLineWithStickyCursor,
 } from "./historycursor";
+import { handleMessageTextObject } from "./vim/message";
 import { dismissAutocomplete } from "./autocomplete";
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -189,6 +190,10 @@ function processVimKey(key: KeyEvent, state: RenderState): KeyResult | null {
   if (context === "history" && state.vim.mode !== "insert") {
     if (historyFindHandler(key, state)) return { type: "handled" };
   }
+
+  // Message text object (im/am) — intercept before engine for all contexts
+  const msgResult = handleMessageTextObject(key, state, context);
+  if (msgResult) return msgResult;
 
   const prevMode = state.vim.mode;
   const result = processKey(key, state.vim, context, state.inputBuffer, state.cursorPos);
