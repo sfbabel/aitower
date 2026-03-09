@@ -94,23 +94,13 @@ export function lineDown(cursor: HistoryCursor, lines: string[]): HistoryCursor 
 }
 
 export function lineStart(cursor: HistoryCursor, lines: string[], wrapCont?: boolean[]): HistoryCursor {
-  // Walk backwards through wrap-continuation lines to find the first
-  // visual line of this logical line.
-  let row = cursor.row;
-  if (wrapCont) {
-    while (row > 0 && wrapCont[row]) row--;
-  }
+  const row = wrapCont ? logicalLineRange(cursor.row, wrapCont).first : cursor.row;
   const { start } = contentBounds(stripAnsi(lines[row] ?? ""));
   return { row, col: start };
 }
 
 export function lineEnd(cursor: HistoryCursor, lines: string[], wrapCont?: boolean[]): HistoryCursor {
-  // Walk forwards through wrap-continuation lines to find the last
-  // visual line of this logical line.
-  let row = cursor.row;
-  if (wrapCont) {
-    while (row < lines.length - 1 && wrapCont[row + 1]) row++;
-  }
+  const row = wrapCont ? logicalLineRange(cursor.row, wrapCont).last : cursor.row;
   const { end } = contentBounds(stripAnsi(lines[row] ?? ""));
   return { row, col: end };
 }

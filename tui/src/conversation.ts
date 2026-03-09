@@ -51,12 +51,7 @@ export function wordWrap(text: string, width: number): WrapResult {
 
 // ── Block rendering ─────────────────────────────────────────────────
 
-interface BlockResult {
-  lines: string[];
-  cont: boolean[];
-}
-
-function renderBlock(block: Block, contentWidth: number, toolRegistry: ToolDisplayInfo[], showToolOutput: boolean): BlockResult {
+function renderBlock(block: Block, contentWidth: number, toolRegistry: ToolDisplayInfo[], showToolOutput: boolean): WrapResult {
   const lines: string[] = [];
   const cont: boolean[] = [];
 
@@ -125,7 +120,7 @@ function renderBlock(block: Block, contentWidth: number, toolRegistry: ToolDispl
 
 // ── User message rendering (right-aligned, themed background) ───────
 
-function renderUserMessage(text: string, cols: number): BlockResult {
+function renderUserMessage(text: string, cols: number): WrapResult {
   const padding = 1;         // horizontal padding inside bubble
   const margin = 2;          // gap from right edge of screen
   const maxBubbleWidth = cols - margin - 1;
@@ -176,7 +171,7 @@ export function buildMessageLines(
   const messageBounds: MessageBound[] = [];
 
   /** Append block result (lines + continuation flags). */
-  const pushBlock = (br: BlockResult) => {
+  const pushBlock = (br: WrapResult) => {
     lines.push(...br.lines);
     wrapContinuation.push(...br.cont);
   };

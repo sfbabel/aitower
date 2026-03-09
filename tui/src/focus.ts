@@ -28,7 +28,7 @@ import { clampNormal } from "./vim/buffer";
 import { pushUndo, markInsertEntry, commitInsertSession, undo as undoFn, redo as redoFn } from "./undo";
 import {
   applyHistoryAction, stripAnsi, ensureCursorVisible, placeAtVisibleBottom,
-  logicalLineRange,
+  logicalLineRange, joinLogicalLines,
   handleHistoryFind as historyFindHandler,
   getHistoryVisualSelection,
   scrollHalfPageWithCursor, scrollFullPageWithCursor, scrollLineWithStickyCursor,
@@ -378,23 +378,13 @@ function handleVimAction(action: string, state: RenderState): KeyResult {
 
 function handleHistoryCursorAction(action: Action, state: RenderState): KeyResult {
   if (action === "history_yy") {
-    const lines = state.historyLines;
     const wrapCont = state.historyWrapContinuation;
     const curRow = state.historyCursor.row;
     // Yank the full logical line (all wrap-continuation rows joined)
     const { first, last } = wrapCont.length > 0
       ? logicalLineRange(curRow, wrapCont)
       : { first: curRow, last: curRow };
-    const parts: string[] = [];
-    for (let r = first; r <= last; r++) {
-      const text = stripAnsi(lines[r] ?? "").trim();
-      if (r === first || !wrapCont[r]) {
-        parts.push(text);
-      } else {
-        parts[parts.length - 1] += (text ? " " + text : "");
-      }
-    }
-    const plain = parts.join("\n");
+    const plain = joinLogicalLines(state.historyLines, wrapCont, first, last);
     if (plain) copyToClipboard(plain);
     ensureCursorVisible(state);
     return { type: "handled" };

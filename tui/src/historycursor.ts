@@ -248,7 +248,7 @@ export function getHistoryVisualSelection(state: RenderState): string {
  * Wrap-continuation rows are joined with a space (same logical line).
  * Non-continuation rows start a new \n-delimited line.
  */
-function joinLogicalLines(
+export function joinLogicalLines(
   lines: string[],
   wrapCont: boolean[],
   startRow: number,
