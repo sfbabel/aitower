@@ -161,6 +161,35 @@ export function clearPrompt(state: RenderState): void {
   markInsertEntry(state.undo, "", 0);
 }
 
+// ── Wrapped-line offset mapping ──────────────────────────────────────
+
+/**
+ * Compute the buffer offset for each wrapped line.
+ *
+ * Given the raw input buffer and the hard-wrap width, returns an array
+ * where `offsets[i]` is the character index in `buffer` where wrapped
+ * line `i` begins. Used by prompt highlighting and visual selection
+ * to map between buffer positions and visible wrapped lines.
+ */
+export function wrappedLineOffsets(buffer: string, maxWidth: number): number[] {
+  const offsets: number[] = [];
+  const lines = buffer.split("\n");
+  let pos = 0;
+
+  for (const line of lines) {
+    if (line.length <= maxWidth) {
+      offsets.push(pos);
+    } else {
+      for (let i = 0; i < line.length; i += maxWidth) {
+        offsets.push(pos + i);
+      }
+    }
+    pos += line.length + 1; // +1 for \n
+  }
+
+  return offsets;
+}
+
 // ── Input line wrapping (vim-style hard wrap) ───────────────────────
 
 export interface InputLinesResult {

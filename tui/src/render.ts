@@ -11,7 +11,7 @@ import { renderStatusLine, statusLineHeight } from "./statusline";
 import { renderTopbar } from "./topbar";
 import { renderSidebar, SIDEBAR_WIDTH } from "./sidebar";
 import { buildMessageLines } from "./conversation";
-import { getInputLines } from "./promptline";
+import { getInputLines, wrappedLineOffsets } from "./promptline";
 import { show_cursor, hide_cursor, cursor_block, cursor_underline, cursor_bar, applyLineBg } from "./terminal";
 import { theme } from "./theme";
 import { clampCursor, stripAnsi, contentBounds } from "./historycursor";
@@ -36,46 +36,30 @@ function highlightPromptLine(
   selStart: number,
   selEnd: number,
   buffer: string,
-  maxWidth: number,
+  offsets: number[],
   isLinewise: boolean,
 ): string {
+  if (wrappedLineIdx >= offsets.length) return line;
+
   // For linewise: expand selection to full line boundaries in the buffer
   let effStart = selStart;
   let effEnd = selEnd;
   if (isLinewise) {
-    // Find start of line containing selStart
     const ls = buffer.lastIndexOf("\n", effStart - 1);
     effStart = ls === -1 ? 0 : ls + 1;
-    // Find end of line containing selEnd
     const le = buffer.indexOf("\n", effEnd);
     effEnd = le === -1 ? buffer.length - 1 : le;
   }
 
   // Use visible length (line may contain ANSI codes from command highlighting)
   const visLen = stripAnsi(line).length;
+  const lineStart = offsets[wrappedLineIdx];
+  const lineEnd = lineStart + visLen - 1;
 
-  // Compute the buffer offset for this wrapped line
-  const bufferLines = buffer.split("\n");
-  let offset = 0;
-  let wrappedIdx = 0;
-
-  for (const bLine of bufferLines) {
-    const chunks = bLine.length <= maxWidth ? 1 : Math.ceil(bLine.length / maxWidth);
-    if (wrappedLineIdx < wrappedIdx + chunks) {
-      // This wrapped line is within this buffer line
-      const chunkIdx = wrappedLineIdx - wrappedIdx;
-      const lineStart = offset + chunkIdx * maxWidth;
-      const lineEnd = lineStart + visLen - 1;
-
-      if (effStart <= lineEnd && effEnd >= lineStart) {
-        const colStart = isLinewise ? 0 : Math.max(0, effStart - lineStart);
-        const colEnd = isLinewise ? visLen - 1 : Math.min(visLen - 1, effEnd - lineStart);
-        return renderLineWithSelection(line, colStart, colEnd);
-      }
-      return line;
-    }
-    wrappedIdx += chunks;
-    offset += bLine.length + 1;
+  if (effStart <= lineEnd && effEnd >= lineStart) {
+    const colStart = isLinewise ? 0 : Math.max(0, effStart - lineStart);
+    const colEnd = isLinewise ? visLen - 1 : Math.min(visLen - 1, effEnd - lineStart);
+    return renderLineWithSelection(line, colStart, colEnd);
   }
 
   return line;
@@ -302,6 +286,8 @@ export function render(state: RenderState): void {
   // ── Input rows ────────────────────────────────────────────────
   const promptInVisual = promptFocused
     && (state.vim.mode === "visual" || state.vim.mode === "visual-line");
+  // Compute once for all visual-selection calls inside the loop
+  const inputOffsets = promptInVisual ? wrappedLineOffsets(state.inputBuffer, maxInputWidth) : [];
 
   for (let i = 0; i < inputRowCount; i++) {
     const row = firstInputRow + i;
@@ -323,8 +309,8 @@ export function render(state: RenderState): void {
       // Apply selection highlight to prompt input line (works on ANSI-colored text)
       const selStart = Math.min(state.vim.visualAnchor, state.cursorPos);
       const selEnd = Math.max(state.vim.visualAnchor, state.cursorPos);
-      lineContent = highlightPromptLine(lineContent, i, selStart, selEnd,
-        state.inputBuffer, maxInputWidth, state.vim.mode === "visual-line");
+      lineContent = highlightPromptLine(lineContent, newPromptScroll + i, selStart, selEnd,
+        state.inputBuffer, inputOffsets, state.vim.mode === "visual-line");
     }
 
     out.push(move_to(row, 1) + clear_line);

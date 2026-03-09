@@ -9,11 +9,8 @@
 
 import { COMMAND_LIST, MODEL_ARGS } from "./commands";
 import { MACRO_LIST, MACRO_ARGS } from "./macros";
-import { hexToAnsi, theme } from "./theme";
-
-// ── Color ─────────────────────────────────────────────────────────
-
-const CMD_COLOR = hexToAnsi("#aed6fe");
+import { theme } from "./theme";
+import { wrappedLineOffsets } from "./promptline";
 
 // ── Valid names & args ────────────────────────────────────────────
 
@@ -26,10 +23,10 @@ const VALID_NAMES = new Set([
 /** Map of command/macro name → set of valid argument names. */
 const VALID_ARGS: Record<string, Set<string>> = {
   "/model": new Set(MODEL_ARGS.map(a => a.name)),
+  ...Object.fromEntries(
+    Object.entries(MACRO_ARGS).map(([cmd, args]) => [cmd, new Set(args.map(a => a.name))]),
+  ),
 };
-for (const [cmd, args] of Object.entries(MACRO_ARGS)) {
-  VALID_ARGS[cmd] = new Set(args.map(a => a.name));
-}
 
 // ── Span detection ───────────────────────────────────────────────
 
@@ -87,27 +84,13 @@ export function highlightPromptInput(
   const spans = findCommandSpans(buffer);
   if (spans.length === 0) return lines;
 
-  // Compute buffer offset for every wrapped line
-  const allOffsets: number[] = [];
-  const bufferLines = buffer.split("\n");
-  let bufOffset = 0;
-
-  for (const bLine of bufferLines) {
-    if (bLine.length <= maxWidth) {
-      allOffsets.push(bufOffset);
-    } else {
-      for (let i = 0; i < bLine.length; i += maxWidth) {
-        allOffsets.push(bufOffset + i);
-      }
-    }
-    bufOffset += bLine.length + 1; // +1 for \n
-  }
+  const offsets = wrappedLineOffsets(buffer, maxWidth);
 
   return lines.map((line, i) => {
     const wrappedIdx = scrollOffset + i;
-    if (wrappedIdx >= allOffsets.length) return line;
+    if (wrappedIdx >= offsets.length) return line;
 
-    const lineStart = allOffsets[wrappedIdx];
+    const lineStart = offsets[wrappedIdx];
     const lineEnd = lineStart + line.length;
 
     // Collect overlapping highlight regions (in visible column space)
@@ -126,7 +109,7 @@ export function highlightPromptInput(
     let pos = 0;
     for (const { col, len } of regions) {
       if (col > pos) result += line.slice(pos, col);
-      result += CMD_COLOR + line.slice(col, col + len) + theme.reset;
+      result += theme.command + line.slice(col, col + len) + theme.reset;
       pos = col + len;
     }
     if (pos < line.length) result += line.slice(pos);

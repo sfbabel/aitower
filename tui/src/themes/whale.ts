@@ -29,6 +29,7 @@ export const whale: Theme = {
   success:  `${ESC}38;2;80;200;120m`,    // #50c878 green
   prompt:   `${ESC}34m`,                 // blue
   tool:     `${ESC}35m`,                 // magenta
+  command:  `${ESC}38;2;174;214;254m`,   // #aed6fe
 
   // Vim mode indicators
   vimNormal: `${ESC}38;2;72;202;228m`,    // #48cae4

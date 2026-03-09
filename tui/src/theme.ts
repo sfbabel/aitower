@@ -30,6 +30,7 @@ export interface Theme {
   success: string;     // Connected indicator
   prompt: string;      // Input prompt ❯
   tool: string;        // Tool call labels
+  command: string;     // Valid slash commands & macros in prompt
 
   // Vim mode indicators
   vimNormal: string;      // Normal mode label
