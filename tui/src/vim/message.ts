@@ -13,7 +13,7 @@ import type { RenderState } from "../state";
 import type { VimContext } from "./types";
 import { keyString, resetPending } from "./types";
 import { copyToClipboard } from "./clipboard";
-import { stripAnsi, contentBounds, ensureCursorVisible } from "../historycursor";
+import { stripAnsi, contentBounds, ensureCursorVisible, joinLogicalLines } from "../historycursor";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -165,10 +165,8 @@ function extractHistoryMessageText(state: RenderState, inner: boolean): string {
   const range = resolveMessageRows(state, inner);
   if (!range) return "";
 
-  const lines = state.historyLines;
-  const result: string[] = [];
-  for (let i = range.startRow; i < range.endRow; i++) {
-    result.push(stripAnsi(lines[i]).trim());
-  }
-  return result.join("\n");
+  return joinLogicalLines(
+    state.historyLines, state.historyWrapContinuation,
+    range.startRow, range.endRow - 1,
+  );
 }
