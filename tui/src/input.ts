@@ -12,6 +12,8 @@ export interface KeyEvent {
       | "ctrl-j" | "ctrl-k" | "ctrl-l" | "ctrl-m" | "ctrl-n"
       | "ctrl-o" | "ctrl-q" | "ctrl-r" | "ctrl-u" | "ctrl-y"
       | "ctrl-shift-o"
+      | "f14" | "f15" | "f16" | "f17" | "f18" | "f19"
+      | "f20" | "f21" | "f22" | "f23" | "f24"
       | "escape"
       | "paste"
       | "unknown";
@@ -115,6 +117,21 @@ export function parseKeys(data: Buffer): KeyEvent[] {
           if (params === "3" && final === "~") { events.push({ type: "delete" }); i += seqLen; continue; }
           if (params === "1" && final === "~") { events.push({ type: "home" }); i += seqLen; continue; }
           if (params === "4" && final === "~") { events.push({ type: "end" }); i += seqLen; continue; }
+
+          // Function keys F14-F16: CSI 1;2Q/R/S (Shift+F1/F2/F3 — st maps Ctrl+1/2/3)
+          if (params === "1;2" && final === "Q") { events.push({ type: "f14" }); i += seqLen; continue; }
+          if (params === "1;2" && final === "R") { events.push({ type: "f15" }); i += seqLen; continue; }
+          if (params === "1;2" && final === "S") { events.push({ type: "f16" }); i += seqLen; continue; }
+
+          // Function keys F17-F24: CSI NN;2~ (st maps Ctrl+4 through Ctrl+-)
+          if (params === "15;2" && final === "~") { events.push({ type: "f17" }); i += seqLen; continue; }
+          if (params === "17;2" && final === "~") { events.push({ type: "f18" }); i += seqLen; continue; }
+          if (params === "18;2" && final === "~") { events.push({ type: "f19" }); i += seqLen; continue; }
+          if (params === "19;2" && final === "~") { events.push({ type: "f20" }); i += seqLen; continue; }
+          if (params === "20;2" && final === "~") { events.push({ type: "f21" }); i += seqLen; continue; }
+          if (params === "21;2" && final === "~") { events.push({ type: "f22" }); i += seqLen; continue; }
+          if (params === "23;2" && final === "~") { events.push({ type: "f23" }); i += seqLen; continue; }
+          if (params === "24;2" && final === "~") { events.push({ type: "f24" }); i += seqLen; continue; }
 
           // Unknown CSI — skip the full sequence
           i += seqLen;

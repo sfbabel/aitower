@@ -11,6 +11,7 @@ import type { RenderState } from "./state";
 import { resolveAction } from "./keybinds";
 import { markInsertEntry } from "./undo";
 import { updateAutocomplete, cycleAutocomplete, tryPathComplete } from "./autocomplete";
+import { getSymbol } from "./symbols";
 
 /** Returns true if the key resulted in a submit (Enter). */
 export function handlePromptKey(state: RenderState, key: KeyEvent): "submit" | "handled" | "unhandled" {
@@ -31,6 +32,18 @@ export function handlePromptKey(state: RenderState, key: KeyEvent): "submit" | "
     if (state.autocomplete) {
       cycleAutocomplete(state, -1);
     }
+    return "handled";
+  }
+
+  // Symbol keys (Ctrl+number row → F14-F24 from st)
+  const sym = getSymbol(key);
+  if (sym) {
+    state.inputBuffer =
+      state.inputBuffer.slice(0, state.cursorPos) +
+      sym +
+      state.inputBuffer.slice(state.cursorPos);
+    state.cursorPos++;
+    updateAutocomplete(state);
     return "handled";
   }
 
