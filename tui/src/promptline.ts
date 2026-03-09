@@ -172,6 +172,7 @@ export function clearPrompt(state: RenderState): void {
  * to map between buffer positions and visible wrapped lines.
  */
 export function wrappedLineOffsets(buffer: string, maxWidth: number): number[] {
+  if (maxWidth < 1) maxWidth = 1;
   const offsets: number[] = [];
   const lines = buffer.split("\n");
   let pos = 0;
