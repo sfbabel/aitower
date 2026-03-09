@@ -34,8 +34,11 @@ export function handlePromptKey(state: RenderState, key: KeyEvent): "submit" | "
     return "handled";
   }
 
-  // Char input — only when no action is bound to this key
-  if (key.type === "char" && action === null) {
+  // Char input — in insert mode every char is typed.
+  // Non-prompt actions (e.g. sidebar_next bound to Shift+J/K) are already
+  // handled by focus.ts before we get here; the vim engine passthroughs all
+  // chars in insert mode, so we don't gate on resolveAction.
+  if (key.type === "char") {
     if (!key.char) return "handled";
     state.inputBuffer =
       state.inputBuffer.slice(0, state.cursorPos) +
