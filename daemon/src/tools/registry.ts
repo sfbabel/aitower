@@ -96,11 +96,16 @@ export function buildExecutor(): (calls: ApiToolCall[], signal?: AbortSignal) =>
     if (!tool) {
       result = { output: `Unknown tool: ${call.name}`, isError: true };
     } else {
+      const startTime = Date.now();
       try {
         result = await raceAbort(tool.execute(call.input, signal), signal);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
-          result = { output: "Tool interrupted", isError: true };
+          // Fallback for tools that don't handle the signal cooperatively.
+          // Tools like bash resolve before the race fires, so this only
+          // triggers for tools that didn't settle on their own.
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          result = { output: `User interrupted after ${elapsed}s of execution.`, isError: false };
         } else {
           result = { output: `Tool error: ${err instanceof Error ? err.message : String(err)}`, isError: true };
         }

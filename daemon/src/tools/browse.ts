@@ -88,6 +88,7 @@ async function executeBrowse(input: Record<string, unknown>, signal?: AbortSigna
     return { output: `Error: invalid URL: ${url}`, isError: true };
   }
 
+  const startTime = Date.now();
   try {
     // Check cache
     cleanCache();
@@ -154,6 +155,11 @@ async function executeBrowse(input: Record<string, unknown>, signal?: AbortSigna
     const summary = await summarizeContent(fetchUrl, markdown, prompt, signal);
     return { output: cap(summary), isError: false };
   } catch (err) {
+    // Abort: return a clean non-error message instead of a scary stack trace
+    if (err instanceof DOMException && err.name === "AbortError") {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      return { output: `User interrupted after ${elapsed}s of execution.`, isError: false };
+    }
     const msg = err instanceof Error ? err.message : String(err);
     log("error", `browse: ${msg}`);
     return { output: `Error browsing ${fetchUrl}: ${msg}`, isError: true };

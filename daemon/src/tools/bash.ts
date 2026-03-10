@@ -85,6 +85,8 @@ async function executeBash(input: Record<string, unknown>, signal?: AbortSignal)
 
   const timeout = (input.timeout as number) ?? DEFAULT_TIMEOUT_MS;
 
+  const startTime = Date.now();
+
   return new Promise((resolve) => {
     const proc = spawn("bash", ["-c", command], {
       cwd: process.cwd(),
@@ -97,6 +99,7 @@ async function executeBash(input: Record<string, unknown>, signal?: AbortSignal)
     const chunks: Buffer[] = [];
     let totalBytes = 0;
     let byteTruncated = false;
+    let settled = false;
 
     function collect(data: Buffer): void {
       if (byteTruncated) return;
@@ -113,8 +116,20 @@ async function executeBash(input: Record<string, unknown>, signal?: AbortSignal)
     proc.stderr.on("data", collect);
 
     // ── Abort handling: kill entire process group on signal ────
+    // Resolves immediately with elapsed time + partial output so the
+    // agent loop doesn't block. The process cleanup continues in the
+    // background via killProcessGroup.
     if (signal) {
-      const onAbort = () => { if (proc.pid) killProcessGroup(proc.pid); };
+      const onAbort = () => {
+        if (proc.pid) killProcessGroup(proc.pid);
+        if (settled) return;
+        settled = true;
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        const partial = Buffer.concat(chunks).toString("utf8").trimEnd();
+        let output = `User interrupted after ${elapsed}s of execution.`;
+        if (partial) output += ` Partial output captured:\n${partial}`;
+        resolve({ output, isError: false });
+      };
       if (signal.aborted) {
         onAbort();
       } else {
@@ -124,10 +139,15 @@ async function executeBash(input: Record<string, unknown>, signal?: AbortSignal)
     }
 
     proc.on("error", (err) => {
+      if (settled) return;
+      settled = true;
       resolve({ output: `Error: ${err.message}`, isError: true });
     });
 
     proc.on("close", (code, sig) => {
+      if (settled) return;
+      settled = true;
+
       let output = Buffer.concat(chunks).toString("utf8");
 
       // If output exceeds context budget, spill to file and return preview
