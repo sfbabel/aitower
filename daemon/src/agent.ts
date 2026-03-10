@@ -12,6 +12,7 @@
 import { streamMessage, type ApiToolCall } from "./api";
 import { log } from "./log";
 import type { ModelId, Block, ToolCallBlock, ToolResultBlock, ApiMessage } from "./messages";
+import { MAX_OUTPUT_CHARS, cap } from "./tools/util";
 
 // ── Callbacks ───────────────────────────────────────────────────────
 
@@ -214,6 +215,13 @@ export async function runAgentLoop(
     // ── Emit tool result blocks + build API tool_result message ───
     const toolResultContent: ApiMessage["content"] = [];
     for (const r of execResults) {
+      // Central safety net: cap tool output so no tool can brick the conversation,
+      // even if the tool's own limiting logic has a bug.
+      if (r.output.length > MAX_OUTPUT_CHARS) {
+        log("warn", `agent: tool '${r.toolName}' output exceeded ${MAX_OUTPUT_CHARS} chars (${r.output.length}), capping`);
+        r.output = cap(r.output);
+      }
+
       const block: ToolResultBlock = {
         type: "tool_result",
         toolCallId: r.toolCallId,

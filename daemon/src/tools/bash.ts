@@ -20,6 +20,12 @@ const TAIL_BUDGET = 8_000;            // chars for tail preview
 
 // ── Output limiting ───────────────────────────────────────────────
 
+/** Truncate a single line if it exceeds the per-line budget. */
+function truncLine(line: string, budget: number): string {
+  if (line.length <= budget) return line;
+  return line.slice(0, budget) + `... [truncated, ${line.length} chars total]`;
+}
+
 /**
  * When output is too large for the conversation context, save the full
  * text to a temp file and return a head+tail preview with the file path.
@@ -31,13 +37,15 @@ function spillAndPreview(output: string, byteTruncated: boolean): string {
   const lines = output.split("\n");
   const totalLines = lines.length;
 
-  // Head: lines from the start, up to HEAD_BUDGET chars
+  // Head: lines from the start, up to HEAD_BUDGET chars.
+  // Individual lines longer than HEAD_BUDGET are truncated so a single
+  // minified line can never blow through the budget.
   let headEnd = 0;
   let headChars = 0;
   while (headEnd < totalLines) {
-    const cost = lines[headEnd].length + 1;
-    if (headChars + cost > HEAD_BUDGET && headEnd > 0) break;
-    headChars += cost;
+    const lineCost = Math.min(lines[headEnd].length, HEAD_BUDGET) + 1;
+    if (headChars + lineCost > HEAD_BUDGET && headEnd > 0) break;
+    headChars += lineCost;
     headEnd++;
   }
 
@@ -45,15 +53,17 @@ function spillAndPreview(output: string, byteTruncated: boolean): string {
   let tailStart = totalLines;
   let tailChars = 0;
   while (tailStart > headEnd) {
-    const cost = lines[tailStart - 1].length + 1;
-    if (tailChars + cost > TAIL_BUDGET) break;
+    const lineCost = Math.min(lines[tailStart - 1].length, TAIL_BUDGET) + 1;
+    if (tailChars + lineCost > TAIL_BUDGET) break;
     tailStart--;
-    tailChars += cost;
+    tailChars += lineCost;
   }
 
   const omitted = tailStart - headEnd;
-  const head = lines.slice(0, headEnd).join("\n");
-  const tail = tailStart < totalLines ? lines.slice(tailStart).join("\n") : "";
+  const head = lines.slice(0, headEnd).map(l => truncLine(l, HEAD_BUDGET)).join("\n");
+  const tail = tailStart < totalLines
+    ? lines.slice(tailStart).map(l => truncLine(l, TAIL_BUDGET)).join("\n")
+    : "";
 
   const truncNote = byteTruncated ? ", byte-truncated at 1MB" : "";
   const separator = `\n\n... ${omitted.toLocaleString()} lines omitted (${totalLines.toLocaleString()} total${truncNote}). Full output: ${spillPath}\nUse the read tool with offset/limit to browse.\n\n`;
