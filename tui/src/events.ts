@@ -8,7 +8,7 @@
 import type { RenderState } from "./state";
 import { isStreaming, clearPendingAI } from "./state";
 import { ensureCurrentBlock, createPendingAI, sortConversations } from "./messages";
-import type { AIMessage, SystemMessage } from "./messages";
+import type { AIMessage, SystemMessage, ImageAttachment } from "./messages";
 import { updateConversationList, updateConversation, syncSelectedIndex } from "./sidebar";
 import { theme } from "./theme";
 import type { Event } from "./protocol";
@@ -19,7 +19,7 @@ import type { Event } from "./protocol";
 export interface DaemonActions {
   subscribe(convId: string): void;
   unsubscribe(convId: string): void;
-  sendMessage(convId: string, text: string, startedAt: number): void;
+  sendMessage(convId: string, text: string, startedAt: number, images?: ImageAttachment[]): void;
 }
 
 // ── Event handler ───────────────────────────────────────────────────
@@ -36,9 +36,10 @@ export function handleEvent(
       daemon.subscribe(event.convId);
 
       // If we had a pending message, send it now
-      if (state.pendingSend.active && state.pendingSend.text && state.pendingAI) {
-        daemon.sendMessage(event.convId, state.pendingSend.text, state.pendingAI.metadata!.startedAt);
+      if (state.pendingSend.active && (state.pendingSend.text || state.pendingSend.images) && state.pendingAI) {
+        daemon.sendMessage(event.convId, state.pendingSend.text, state.pendingAI.metadata!.startedAt, state.pendingSend.images);
         state.pendingSend.text = "";
+        state.pendingSend.images = undefined;
         state.pendingSend.active = false;
       }
       break;
@@ -261,7 +262,7 @@ export function handleEvent(
       for (const entry of event.entries) {
         switch (entry.type) {
           case "user":
-            state.messages.push({ role: "user", text: entry.text, metadata: null });
+            state.messages.push({ role: "user", text: entry.text, images: entry.images, metadata: null });
             break;
           case "ai":
             state.messages.push({
@@ -320,7 +321,7 @@ export function handleEvent(
         );
       }
 
-      state.messages.push({ role: "user", text: event.text, metadata: null });
+      state.messages.push({ role: "user", text: event.text, images: event.images, metadata: null });
 
       // Remove matching local shadow — the daemon already injected it
       const idx = state.queuedMessages.findIndex(

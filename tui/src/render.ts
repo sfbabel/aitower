@@ -7,7 +7,8 @@
  */
 
 import type { RenderState } from "./state";
-import { renderStatusLine, statusLineHeight } from "./statusline";
+import type { ImageAttachment } from "./messages";
+import { renderStatusLine } from "./statusline";
 import { renderTopbar } from "./topbar";
 import { renderSidebar, SIDEBAR_WIDTH } from "./sidebar";
 import { buildMessageLines } from "./conversation";
@@ -17,6 +18,7 @@ import { theme } from "./theme";
 import { clampCursor, stripAnsi, contentBounds, logicalLineRange } from "./historycursor";
 import { renderLineWithCursor, renderLineWithSelection } from "./cursorrender";
 import { highlightPromptInput } from "./promptHighlight";
+import { formatSize, imageLabel } from "./clipboard";
 
 import type { QueuePromptState } from "./state";
 
@@ -65,6 +67,36 @@ function highlightPromptLine(
   }
 
   return line;
+}
+
+// ── Image indicator ────────────────────────────────────────────────
+
+function renderImageIndicator(images: ImageAttachment[], width: number): string {
+  if (width <= 0 || images.length === 0) return "";
+
+  let label: string;
+  if (images.length === 1) {
+    const img = images[0];
+    label = `📎 Image pasted (${imageLabel(img.mediaType)}, ${formatSize(img.sizeBytes)})`;
+  } else {
+    const parts = images.map(img =>
+      `${imageLabel(img.mediaType)} ${formatSize(img.sizeBytes)}`
+    );
+    label = `📎 ${images.length} images (${parts.join(", ")})`;
+  }
+
+  // Truncate if it doesn't fit (leave room for "│ " + " │")
+  const innerWidth = width - 4;
+  if (label.length > innerWidth) {
+    label = label.slice(0, Math.max(0, innerWidth - 1)) + "…";
+  }
+  const padding = Math.max(0, innerWidth - label.length);
+
+  return (
+    theme.accent + "│" +
+    theme.reset + " " + theme.dim + label + " ".repeat(padding) +
+    theme.reset + " " + theme.accent + "│" + theme.reset
+  );
 }
 
 export function render(state: RenderState): void {
@@ -123,12 +155,14 @@ export function render(state: RenderState): void {
 
   const inputRowCount = inputLines.length;
 
-  // ── Bottom layout: sep | input rows | sep | status ────────────
-  const slHeight = statusLineHeight(state, chatW);
-  const statusLines = renderStatusLine(state, chatW);
-  const bottomUsed = 1 + inputRowCount + 1 + slHeight;
+  // ── Bottom layout: sep | [imageIndicator] | input rows | sep | status
+  const statusResult = renderStatusLine(state, chatW);
+  const slHeight = statusResult.height;
+  const statusLines = statusResult.lines;
+  const imageIndicatorRows = state.pendingImages.length > 0 ? 1 : 0;
+  const bottomUsed = 1 + imageIndicatorRows + inputRowCount + 1 + slHeight;
   const sepAbove = rows - bottomUsed + 1;
-  const firstInputRow = sepAbove + 1;
+  const firstInputRow = sepAbove + 1 + imageIndicatorRows;
   const sepBelow = firstInputRow + inputRowCount;
 
   // Prompt separator
@@ -305,6 +339,16 @@ export function render(state: RenderState): void {
     out.push(sbRows[sepAbove - 1]);
   }
   out.push(move_to(sepAbove, chatCol) + `${promptColor}${"─".repeat(chatW)}${theme.reset}`);
+
+  // ── Image indicator (between separator and prompt) ────────────
+  if (imageIndicatorRows > 0) {
+    const indRow = sepAbove + 1;
+    out.push(move_to(indRow, 1) + clear_line);
+    if (sidebarOpen && sbRows[indRow - 1]) {
+      out.push(sbRows[indRow - 1]);
+    }
+    out.push(move_to(indRow, chatCol) + renderImageIndicator(state.pendingImages, chatW));
+  }
 
   // ── Input rows ────────────────────────────────────────────────
   const promptInVisual = promptFocused

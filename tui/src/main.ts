@@ -18,6 +18,7 @@ import { render } from "./render";
 import { enter_alt, leave_alt, hide_cursor, show_cursor, enable_bracketed_paste, disable_bracketed_paste } from "./terminal";
 import { createInitialState, isStreaming, clearPendingAI } from "./state";
 import { createPendingAI } from "./messages";
+import type { ImageAttachment } from "./messages";
 import { handleEvent } from "./events";
 import { confirmQueueMessage, cancelQueuePrompt, clearLocalQueue } from "./queue";
 import { theme } from "./theme";
@@ -76,24 +77,27 @@ function onDaemonEvent(event: Event): void {
 
 function handleSubmit(): void {
   const text = state.inputBuffer.trim();
-  if (!text) return;
+  const hasImages = state.pendingImages.length > 0;
+  if (!text && !hasImages) return;
 
-  // Slash commands
-  const cmdResult = tryCommand(text, state);
-  if (cmdResult) {
-    if (cmdResult.type === "quit") { running = false; return; }
-    if (cmdResult.type === "new_conversation") {
-      if (state.convId) daemon.unsubscribe(state.convId);
-      state.convId = null;
+  // Slash commands (only when no images attached — pure text commands)
+  if (text && !hasImages) {
+    const cmdResult = tryCommand(text, state);
+    if (cmdResult) {
+      if (cmdResult.type === "quit") { running = false; return; }
+      if (cmdResult.type === "new_conversation") {
+        if (state.convId) daemon.unsubscribe(state.convId);
+        state.convId = null;
+      }
+      if (cmdResult.type === "model_changed" && state.convId) {
+        daemon.setModel(state.convId, cmdResult.model);
+      }
+      if (cmdResult.type === "rename_conversation" && state.convId) {
+        daemon.renameConversation(state.convId, cmdResult.title);
+      }
+      scheduleRender();
+      return;
     }
-    if (cmdResult.type === "model_changed" && state.convId) {
-      daemon.setModel(state.convId, cmdResult.model);
-    }
-    if (cmdResult.type === "rename_conversation" && state.convId) {
-      daemon.renameConversation(state.convId, cmdResult.title);
-    }
-    scheduleRender();
-    return;
   }
 
   // Regular message — expand macros before sending
@@ -109,23 +113,26 @@ function handleSubmit(): void {
     return;
   }
 
+  const images = hasImages ? [...state.pendingImages] : undefined;
   clearPrompt(state);
+  state.pendingImages = [];
   state.scrollOffset = 0;
-  sendDirectly(messageText);
+  sendDirectly(messageText, images);
 }
 
 /** Send a message immediately (no streaming in progress). */
-function sendDirectly(messageText: string): void {
+function sendDirectly(messageText: string, images?: ImageAttachment[]): void {
   const startedAt = Date.now();
-  state.messages.push({ role: "user", text: messageText, metadata: null });
+  state.messages.push({ role: "user", text: messageText, images, metadata: null });
   state.pendingAI = createPendingAI(startedAt, state.model);
 
   if (!state.convId) {
     state.pendingSend.active = true;
     state.pendingSend.text = messageText;
+    state.pendingSend.images = images;
     daemon.createConversation(state.model);
   } else {
-    daemon.sendMessage(state.convId, messageText, startedAt);
+    daemon.sendMessage(state.convId, messageText, startedAt, images);
   }
 
   scheduleRender();
