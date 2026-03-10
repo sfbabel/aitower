@@ -19,10 +19,11 @@ import { createHistoryCursor } from "./historycursor";
 import type { UndoState } from "./undo";
 import { createUndoState, markInsertEntry } from "./undo";
 import type { AutocompleteState } from "./autocomplete";
+import type { QueueTiming } from "./protocol";
 
 // ── Queue types ────────────────────────────────────────────────────
 
-export type QueueTiming = "next-turn" | "message-end";
+export type { QueueTiming } from "./protocol";
 
 export interface QueuedMessage {
   convId: string;

@@ -6,7 +6,7 @@
 
 import { connect, type Socket } from "net";
 import { existsSync } from "fs";
-import type { Command, Event } from "./protocol";
+import type { Command, Event, QueueTiming } from "./protocol";
 import type { ModelId } from "./messages";
 import { socketPath } from "@exocortex/shared/paths";
 
@@ -130,6 +130,10 @@ export class DaemonClient {
 
   renameConversation(convId: string, title: string): void {
     this.send({ type: "rename_conversation", convId, title });
+  }
+
+  queueMessage(convId: string, text: string, timing: QueueTiming): void {
+    this.send({ type: "queue_message", convId, text, timing });
   }
 
   listConversations(): void {

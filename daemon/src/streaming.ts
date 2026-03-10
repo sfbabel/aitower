@@ -10,6 +10,14 @@
  */
 
 import type { Block } from "./messages";
+import type { QueueTiming } from "./protocol";
+
+// ── Types ──────────────────────────────────────────────────────────
+
+export interface QueuedMessage {
+  text: string;
+  timing: QueueTiming;
+}
 
 // ── State ───────────────────────────────────────────────────────────
 
@@ -19,6 +27,8 @@ const chunkCounters = new Map<string, number>();
 const streamingBlocks = new Map<string, Block[]>();
 /** Original startedAt timestamp per streaming job (for late-joining clients). */
 const streamingStartedAt = new Map<string, number>();
+/** Messages queued for delivery during or after streaming. */
+const messageQueues = new Map<string, QueuedMessage[]>();
 
 const CHUNK_SAVE_INTERVAL = 5;
 
@@ -97,4 +107,47 @@ export function appendToStreamingBlock(convId: string, type: "text" | "thinking"
 /** Clear streaming blocks (call when stream finishes). */
 export function clearStreamingBlocks(convId: string): void {
   streamingBlocks.delete(convId);
+}
+
+// ── Message queue (queued messages for delivery during/after streaming) ─
+
+/** Push a message onto a conversation's queue. */
+export function pushQueuedMessage(convId: string, text: string, timing: QueueTiming): void {
+  let queue = messageQueues.get(convId);
+  if (!queue) {
+    queue = [];
+    messageQueues.set(convId, queue);
+  }
+  queue.push({ text, timing });
+}
+
+/**
+ * Drain queued messages with the given timing. Removes and returns them.
+ * If timing is omitted, drains all queued messages.
+ */
+export function drainQueuedMessages(convId: string, timing?: QueueTiming): QueuedMessage[] {
+  const queue = messageQueues.get(convId);
+  if (!queue || queue.length === 0) return [];
+
+  const drained: QueuedMessage[] = [];
+  const remaining: QueuedMessage[] = [];
+  for (const qm of queue) {
+    if (timing === undefined || qm.timing === timing) {
+      drained.push(qm);
+    } else {
+      remaining.push(qm);
+    }
+  }
+
+  if (remaining.length === 0) {
+    messageQueues.delete(convId);
+  } else {
+    messageQueues.set(convId, remaining);
+  }
+  return drained;
+}
+
+/** Clear all queued messages for a conversation. */
+export function clearQueuedMessages(convId: string): void {
+  messageQueues.delete(convId);
 }

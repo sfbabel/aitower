@@ -3,10 +3,13 @@
  *
  * When the user submits a message while the AI is still streaming,
  * a modal appears letting them choose when to deliver it:
- * - "next turn": injected between tool-use rounds
- * - "message end": sent after the AI turn finishes
+ * - "next turn": injected between tool-use rounds (ASAP)
+ * - "message end": sent after the full AI turn finishes
  *
  * j/k and arrow keys toggle the selection. Enter confirms, Escape cancels.
+ *
+ * The actual queue lives in the daemon — the TUI sends a queue_message
+ * command and keeps a local shadow copy for display (dimmed bubbles).
  */
 
 import type { KeyEvent } from "./input";
@@ -57,16 +60,18 @@ export function handleQueuePromptKey(key: KeyEvent, state: RenderState): QueueKe
 
 // ── Confirm / cancel ───────────────────────────────────────────────
 
+export type ConfirmResult =
+  | { action: "send_direct"; text: string }
+  | { action: "queue"; convId: string; text: string; timing: QueueTiming }
+  | { action: "cancel" };
+
 /**
- * Confirm the queued message. If streaming already finished while the
- * overlay was showing, send directly instead of queuing.
- *
- * Returns { direct: true, text } when the message should be sent
- * immediately via the daemon, or { direct: false } when queued.
+ * Confirm the queued message. Returns what the caller should do:
+ * - send_direct: streaming finished, send immediately
+ * - queue: send queue_message to daemon + add local shadow
+ * - cancel: no conversation, can't queue
  */
-export function confirmQueueMessage(
-  state: RenderState,
-): { direct: true; text: string } | { direct: false } {
+export function confirmQueueMessage(state: RenderState): ConfirmResult {
   const qp = state.queuePrompt!;
   const timing = qp.selection;
   const convId = state.convId;
@@ -77,28 +82,24 @@ export function confirmQueueMessage(
     state.queuePrompt = null;
     state.inputBuffer = "";
     state.cursorPos = 0;
-    return { direct: true, text };
+    return { action: "send_direct", text };
   }
 
   if (!convId) {
-    // No conversation — can't queue. Cancel silently.
+    // No conversation — can't queue. Restore text to prompt.
     state.inputBuffer = qp.text;
     state.cursorPos = qp.text.length;
     state.queuePrompt = null;
-    return { direct: false };
+    return { action: "cancel" };
   }
 
-  // Queue the message
-  const queued: QueuedMessage = {
-    convId,
-    text: qp.text,
-    timing,
-  };
+  // Queue the message — local shadow for display
+  const queued: QueuedMessage = { convId, text: qp.text, timing };
   state.queuedMessages.push(queued);
   state.queuePrompt = null;
   state.inputBuffer = "";
   state.cursorPos = 0;
-  return { direct: false };
+  return { action: "queue", convId, text: qp.text, timing };
 }
 
 /**
@@ -111,26 +112,12 @@ export function cancelQueuePrompt(state: RenderState): void {
   state.queuePrompt = null;
 }
 
-// ── Drain ──────────────────────────────────────────────────────────
+// ── Drain (local shadow cleanup) ──────────────────────────────────
 
 /**
- * Drain queued messages for a conversation with the given timing.
- * Removes and returns the matching messages from the queue.
+ * Remove local shadow entries for a conversation.
+ * Called when streaming_stopped arrives — the daemon already drained.
  */
-export function drainQueuedMessages(
-  state: RenderState,
-  convId: string,
-  timing?: QueueTiming,
-): QueuedMessage[] {
-  const drained: QueuedMessage[] = [];
-  const remaining: QueuedMessage[] = [];
-  for (const qm of state.queuedMessages) {
-    if (qm.convId === convId && (timing === undefined || qm.timing === timing)) {
-      drained.push(qm);
-    } else {
-      remaining.push(qm);
-    }
-  }
-  state.queuedMessages = remaining;
-  return drained;
+export function clearLocalQueue(state: RenderState, convId: string): void {
+  state.queuedMessages = state.queuedMessages.filter(qm => qm.convId !== convId);
 }

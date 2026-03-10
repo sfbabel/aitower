@@ -38,6 +38,12 @@ export interface AgentCallbacks {
   onRetry?(attempt: number, maxAttempts: number, errorMessage: string, delaySec: number): void;
   /** A tool-use round completed — all tool results received, next API call starting. */
   onRoundComplete?(): void;
+  /**
+   * Drain "next-turn" queued messages between rounds.
+   * Called after onRoundComplete — returns user messages to inject
+   * into the conversation before the next API call.
+   */
+  drainNextTurnMessages?(): ApiMessage[];
 }
 
 // ── Tool execution ──────────────────────────────────────────────────
@@ -250,6 +256,15 @@ export async function runAgentLoop(
       state.tokens = totalOutputTokens;
     }
     callbacks.onRoundComplete?.();
+
+    // Inject "next-turn" queued messages between rounds
+    const nextTurn = callbacks.drainNextTurnMessages?.() ?? [];
+    for (const qm of nextTurn) {
+      messages.push(qm);
+      newMessages.push(qm);
+      log("info", `agent: injected next-turn queued message`);
+    }
+
     // Continue loop → next API call with tool results
   }
 

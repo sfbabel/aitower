@@ -19,7 +19,7 @@ import { enter_alt, leave_alt, hide_cursor, show_cursor, enable_bracketed_paste,
 import { createInitialState, isStreaming } from "./state";
 import { createPendingAI } from "./messages";
 import { handleEvent } from "./events";
-import { confirmQueueMessage, cancelQueuePrompt, drainQueuedMessages } from "./queue";
+import { confirmQueueMessage, cancelQueuePrompt, clearLocalQueue } from "./queue";
 import { theme } from "./theme";
 import type { Event } from "./protocol";
 
@@ -61,20 +61,11 @@ function onDaemonEvent(event: Event): void {
   if (event.type === "streaming_stopped") {
     if (streamTickTimer) { clearTimeout(streamTickTimer); streamTickTimer = null; }
 
-    // Drain queued messages — both timings fire on streaming_stopped
-    if (state.convId && event.convId === state.convId) {
-      const drained = drainQueuedMessages(state, state.convId);
-      if (drained.length > 0) {
-        // Send the first queued message; if there are more, they'll be
-        // drained on the next streaming_stopped cycle
-        const first = drained[0];
-        // Re-queue the rest for later
-        for (let i = 1; i < drained.length; i++) {
-          state.queuedMessages.push(drained[i]);
-        }
-        state.scrollOffset = 0;
-        sendDirectly(first.text);
-      }
+    // Clear local queue shadow — the daemon handles draining and re-sending.
+    // The daemon's orchestrator drains message-end messages after streaming_stopped
+    // and kicks off a new send cycle automatically.
+    if (event.convId) {
+      clearLocalQueue(state, event.convId);
     }
   }
 
@@ -149,10 +140,13 @@ function handleKey(key: KeyEvent): void {
       return;
     case "queue_confirm": {
       const qr = confirmQueueMessage(state);
-      if (qr.direct) {
+      if (qr.action === "send_direct") {
         clearPrompt(state);
         state.scrollOffset = 0;
         sendDirectly(qr.text);
+      } else if (qr.action === "queue") {
+        // Send queue command to daemon — it handles injection timing
+        daemon.queueMessage(qr.convId, qr.text, qr.timing);
       }
       break;
     }

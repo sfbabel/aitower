@@ -114,6 +114,16 @@ export interface UndoDeleteCommand {
   reqId?: string;
 }
 
+export type QueueTiming = "next-turn" | "message-end";
+
+export interface QueueMessageCommand {
+  type: "queue_message";
+  reqId?: string;
+  convId: string;
+  text: string;
+  timing: QueueTiming;
+}
+
 export type Command =
   | PingCommand
   | NewConversationCommand
@@ -130,7 +140,8 @@ export type Command =
   | MoveConversationCommand
   | RenameConversationCommand
   | CloneConversationCommand
-  | UndoDeleteCommand;
+  | UndoDeleteCommand
+  | QueueMessageCommand;
 
 // ── Events (daemon → client) ────────────────────────────────────────
 

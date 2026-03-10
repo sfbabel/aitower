@@ -186,6 +186,13 @@ export function createHandler(server: DaemonServer) {
         break;
       }
 
+      case "queue_message": {
+        convStore.pushQueuedMessage(cmd.convId, cmd.text, cmd.timing);
+        server.sendTo(client, { type: "ack", reqId: cmd.reqId, convId: cmd.convId });
+        log("info", `handler: queued ${cmd.timing} message for ${cmd.convId}: "${cmd.text.slice(0, 50)}"`);
+        break;
+      }
+
       case "load_conversation": {
         const data = convStore.getDisplayData(cmd.convId);
         if (!data) {

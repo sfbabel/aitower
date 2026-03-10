@@ -174,6 +174,23 @@ export async function orchestrateSendMessage(
       // Without this, partialContent accumulates across rounds and abort would double-persist.
       partialContent.length = 0;
     },
+    drainNextTurnMessages() {
+      const drained = convStore.drainQueuedMessages(convId, "next-turn");
+      if (drained.length === 0) return [];
+
+      const apiMsgs: import("./messages").ApiMessage[] = [];
+      for (const qm of drained) {
+        // Persist the user message
+        conv.messages.push({ role: "user", content: qm.text, metadata: null });
+        // Broadcast to TUI subscribers so they see the queued message appear
+        server.sendToSubscribers(convId, { type: "user_message", convId, text: qm.text });
+        // Build API-level message for the agent loop
+        apiMsgs.push({ role: "user", content: qm.text });
+        log("info", `orchestrator: injected next-turn message: "${qm.text.slice(0, 50)}"`);
+      }
+      convStore.markDirty(convId);
+      return apiMsgs;
+    },
   };
 
   try {
@@ -321,5 +338,21 @@ export async function orchestrateSendMessage(
     // Broadcast updated summary (streaming=false, possibly unread=true)
     server.broadcast({ type: "conversation_updated", summary: convStore.getSummary(convId)! });
     ext.onComplete();
+
+    // Drain message-end queued messages — send the first as a new turn,
+    // re-queue the rest (they'll drain on the next streaming_stopped).
+    const remaining = convStore.drainQueuedMessages(convId, "next-turn");
+    const messageEnd = convStore.drainQueuedMessages(convId, "message-end");
+    const allQueued = [...remaining, ...messageEnd];
+    if (allQueued.length > 0) {
+      const first = allQueued[0];
+      // Re-queue the rest for the next cycle
+      for (let i = 1; i < allQueued.length; i++) {
+        convStore.pushQueuedMessage(convId, allQueued[i].text, allQueued[i].timing);
+      }
+      log("info", `orchestrator: draining queued message-end: "${first.text.slice(0, 50)}"`);
+      // Kick off a new send cycle asynchronously
+      orchestrateSendMessage(server, client, undefined, convId, first.text, Date.now(), ext);
+    }
   }
 }
