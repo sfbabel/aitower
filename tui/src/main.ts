@@ -17,8 +17,7 @@ import { expandMacros } from "./macros";
 import { render } from "./render";
 import { enter_alt, leave_alt, hide_cursor, show_cursor, enable_bracketed_paste, disable_bracketed_paste } from "./terminal";
 import { createInitialState, isStreaming, clearPendingAI } from "./state";
-import { createPendingAI } from "./messages";
-import type { ImageAttachment } from "./messages";
+import { createPendingAI, type ImageAttachment } from "./messages";
 import { handleEvent } from "./events";
 import { confirmQueueMessage, cancelQueuePrompt, clearLocalQueue } from "./queue";
 import { theme } from "./theme";
@@ -104,6 +103,11 @@ function handleSubmit(): void {
   const messageText = expandMacros(text);
 
   if (isStreaming(state)) {
+    // Queue system doesn't support images yet — drop them with a warning
+    if (hasImages) {
+      state.pendingImages = [];
+      state.messages.push({ role: "system", text: "⚠ Images can't be queued — only text will be sent.", color: theme.warning, metadata: null });
+    }
     // Show queue prompt overlay — let user choose when to send
     state.queuePrompt = {
       text: messageText,
@@ -150,6 +154,7 @@ function handleKey(key: KeyEvent): void {
       if (qr.action === "send_direct") {
         clearPrompt(state);
         state.scrollOffset = 0;
+        // No images — queue system is text-only (images cleared on queue entry)
         sendDirectly(qr.text);
       } else if (qr.action === "queue") {
         // Send queue command to daemon — it handles injection timing
