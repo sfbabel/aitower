@@ -143,10 +143,8 @@ const commands: SlashCommand[] = [
   },
   {
     name: "/convo",
-    description: "Show or copy conversation info",
-    handler: (text, state) => {
-      const arg = text.slice("/convo".length).trim();
-
+    description: "Copy conversation info to clipboard",
+    handler: (_text, state) => {
       if (!state.convId) {
         state.messages.push({ role: "system", text: "No active conversation.", metadata: null });
         clearPrompt(state);
@@ -160,13 +158,8 @@ const commands: SlashCommand[] = [
         return { type: "handled" };
       }
 
-      if (arg === "copy") {
-        copyToClipboard(info);
-        state.messages.push({ role: "system", text: "Conversation info copied to clipboard.", metadata: null });
-      } else {
-        state.messages.push({ role: "system", text: info, metadata: null });
-      }
-
+      copyToClipboard(info);
+      state.messages.push({ role: "system", text: "Conversation info copied to clipboard.", metadata: null });
       clearPrompt(state);
       return { type: "handled" };
     },
@@ -203,13 +196,7 @@ export const MODEL_ARGS: CompletionItem[] = [
   { name: "opus", desc: "Claude Opus 4" },
 ];
 
-/** Subcommand arguments for /convo completion. */
-export const CONVO_ARGS: CompletionItem[] = [
-  { name: "copy", desc: "Copy info to clipboard" },
-];
-
 /** All command argument lists, keyed by command name. Used by autocomplete and prompt highlighting. */
 export const COMMAND_ARGS: Record<string, CompletionItem[]> = {
   "/model": MODEL_ARGS,
-  "/convo": CONVO_ARGS,
 };
