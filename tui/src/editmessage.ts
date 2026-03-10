@@ -1,0 +1,127 @@
+/**
+ * Edit message modal — lets the user pick a previous user message to re-edit.
+ *
+ * Ctrl+E opens a modal listing all user messages in the current conversation
+ * plus any queued messages. j/k navigate, Enter selects, Escape cancels.
+ *
+ * For sent messages: the conversation is unwound (abort if streaming, then
+ * truncate history) and the text is placed in the prompt for re-editing.
+ * For queued messages: simply unqueued and placed in the prompt.
+ */
+
+import type { KeyEvent } from "./input";
+import type { RenderState, EditMessageItem } from "./state";
+
+// ── Open modal ────────────────────────────────────────────────────
+
+/** Open the edit message modal. No-op if there are no user/queued messages. */
+export function openEditMessageModal(state: RenderState): void {
+  if (!state.convId) return;
+
+  const items: EditMessageItem[] = [];
+
+  // Collect sent user messages
+  let userIdx = 0;
+  for (const msg of state.messages) {
+    if (msg.role === "user") {
+      items.push({
+        userMessageIndex: userIdx,
+        text: msg.text,
+        isQueued: false,
+      });
+      userIdx++;
+    }
+  }
+
+  // Collect queued messages
+  const queued = state.queuedMessages.filter(qm => qm.convId === state.convId);
+  for (let i = 0; i < queued.length; i++) {
+    const qmIdx = state.queuedMessages.indexOf(queued[i]);
+    items.push({
+      userMessageIndex: -1,
+      text: queued[i].text,
+      isQueued: true,
+      queueIndex: qmIdx,
+    });
+  }
+
+  if (items.length === 0) return;
+
+  state.editMessagePrompt = {
+    items,
+    selection: items.length - 1,  // default to most recent
+    scrollOffset: 0,
+  };
+}
+
+// ── Key handling ──────────────────────────────────────────────────
+
+export interface EditMessageKeyResult {
+  type: "handled" | "confirm" | "cancel";
+}
+
+/** Handle a key event while the edit message modal is active. */
+export function handleEditMessageKey(key: KeyEvent, state: RenderState): EditMessageKeyResult {
+  const em = state.editMessagePrompt!;
+
+  switch (key.type) {
+    case "char":
+      if (key.char === "k") {
+        if (em.selection > 0) em.selection--;
+      } else if (key.char === "j") {
+        if (em.selection < em.items.length - 1) em.selection++;
+      }
+      return { type: "handled" };
+    case "up":
+      if (em.selection > 0) em.selection--;
+      return { type: "handled" };
+    case "down":
+      if (em.selection < em.items.length - 1) em.selection++;
+      return { type: "handled" };
+    case "enter":
+      return { type: "confirm" };
+    case "escape":
+    case "ctrl-c":
+      return { type: "cancel" };
+    default:
+      return { type: "handled" };
+  }
+}
+
+// ── Confirm / cancel ──────────────────────────────────────────────
+
+export type EditConfirmResult =
+  | { action: "edit_sent"; text: string; userMessageIndex: number }
+  | { action: "edit_queued"; text: string; queueIndex: number }
+  | { action: "cancel" };
+
+/**
+ * Confirm the selected message for editing.
+ * Places the text in the prompt and closes the modal.
+ */
+export function confirmEditMessage(state: RenderState): EditConfirmResult {
+  const em = state.editMessagePrompt!;
+  const item = em.items[em.selection];
+
+  state.editMessagePrompt = null;
+
+  if (!item) return { action: "cancel" };
+
+  // Place text in prompt
+  state.inputBuffer = item.text;
+  state.cursorPos = item.text.length;
+  state.vim.mode = "insert";
+  state.panelFocus = "chat";
+  state.chatFocus = "prompt";
+
+  if (item.isQueued && item.queueIndex !== undefined) {
+    return { action: "edit_queued", text: item.text, queueIndex: item.queueIndex };
+  }
+
+  return { action: "edit_sent", text: item.text, userMessageIndex: item.userMessageIndex };
+}
+
+/** Cancel the edit message modal. */
+export function cancelEditMessage(state: RenderState): void {
+  state.editMessagePrompt = null;
+}

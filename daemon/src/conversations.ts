@@ -19,7 +19,7 @@ export {
   isStreaming, setActiveJob, getActiveJob, clearActiveJob, getStreamingStartedAt,
   resetChunkCounter,
   initStreamingBlocks, getStreamingBlocks, pushStreamingBlock, appendToStreamingBlock, clearStreamingBlocks,
-  pushQueuedMessage, drainQueuedMessages, clearQueuedMessages,
+  pushQueuedMessage, drainQueuedMessages, clearQueuedMessages, removeQueuedMessage,
 } from "./streaming";
 
 // ── State ───────────────────────────────────────────────────────────
@@ -141,6 +141,54 @@ export function rename(id: string, title: string): boolean {
   markDirty(id);
   flush(id);
   return true;
+}
+
+/**
+ * Unwind a conversation to before the Nth user message (0-based).
+ * Removes that user message and everything after it.
+ * Also aborts any active stream and clears any queued messages.
+ * Returns a promise that resolves when any active stream has stopped.
+ */
+export async function unwindTo(id: string, userMessageIndex: number): Promise<boolean> {
+  const conv = conversations.get(id);
+  if (!conv) return false;
+
+  // Clear queued messages first — prevents the orchestrator's finally block
+  // from draining the queue and starting a new stream after we abort.
+  streaming.clearQueuedMessages(id);
+
+  // Abort any active stream and wait for it to fully stop
+  const ac = streaming.getActiveJob(id);
+  if (ac) {
+    ac.abort();
+    await waitForStreamStop(id);
+  }
+
+  let userCount = 0;
+  for (let i = 0; i < conv.messages.length; i++) {
+    if (conv.messages[i].role === "user") {
+      if (userCount === userMessageIndex) {
+        conv.messages.splice(i);
+        conv.updatedAt = Date.now();
+        markDirty(id);
+        flush(id);
+        return true;
+      }
+      userCount++;
+    }
+  }
+  return false;
+}
+
+/** Wait for a streaming job to finish (poll until activeJob clears). */
+function waitForStreamStop(id: string): Promise<void> {
+  return new Promise((resolve) => {
+    const check = () => {
+      if (!streaming.isStreaming(id)) return resolve();
+      setTimeout(check, 10);
+    };
+    check();
+  });
 }
 
 // ── Persistence ─────────────────────────────────────────────────────

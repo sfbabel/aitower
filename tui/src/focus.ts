@@ -17,7 +17,7 @@ import { resolveAction } from "./keybinds";
 import {
   handleChatKey,
   scrollUp, scrollDown,
-  scrollLineUp, scrollLineDown,
+  scrollLineUp,
   scrollHalfUp, scrollHalfDown,
   scrollPageUp, scrollPageDown,
   scrollToTop, scrollToBottom,
@@ -35,6 +35,7 @@ import {
 import { handleMessageTextObject } from "./vim/message";
 import { dismissAutocomplete } from "./autocomplete";
 import { handleQueuePromptKey } from "./queue";
+import { handleEditMessageKey, openEditMessageModal } from "./editmessage";
 import { readClipboardImage } from "./clipboard";
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -55,7 +56,9 @@ export type KeyResult =
   | { type: "clone_conversation"; convId: string }
   | { type: "new_conversation" }
   | { type: "queue_confirm" }
-  | { type: "queue_cancel" };
+  | { type: "queue_cancel" }
+  | { type: "edit_message_confirm" }
+  | { type: "edit_message_cancel" };
 
 // ── Key routing ─────────────────────────────────────────────────────
 
@@ -65,6 +68,14 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
     const qr = handleQueuePromptKey(key, state);
     if (qr.type === "confirm") return { type: "queue_confirm" };
     if (qr.type === "cancel")  return { type: "queue_cancel" };
+    return { type: "handled" };
+  }
+
+  // ── Edit message modal — intercept all keys when showing ─────
+  if (state.editMessagePrompt) {
+    const er = handleEditMessageKey(key, state);
+    if (er.type === "confirm") return { type: "edit_message_confirm" };
+    if (er.type === "cancel")  return { type: "edit_message_cancel" };
     return { type: "handled" };
   }
 
@@ -111,6 +122,9 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
       return { type: "handled" };
     case "new_conversation":
       return { type: "new_conversation" };
+    case "edit_message":
+      openEditMessageModal(state);
+      return { type: "handled" };
     case "focus_history":
       // Toggle: if already in history → back to prompt, otherwise → history
       if (state.panelFocus === "chat" && state.chatFocus === "history") {
@@ -143,7 +157,6 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
       return { type: "handled" };
     }
     case "scroll_line_up":
-    case "scroll_line_down":
     case "scroll_half_up":
     case "scroll_half_down":
     case "scroll_page_up":
@@ -459,7 +472,6 @@ function handleScrollAction(action: Action, state: RenderState): void {
     // Vim-style: cursor moves with scroll
     switch (action) {
       case "scroll_line_up":   scrollLineWithStickyCursor(state, 1);  return;
-      case "scroll_line_down": scrollLineWithStickyCursor(state, -1); return;
       case "scroll_half_up":   scrollHalfPageWithCursor(state, 1);    return;
       case "scroll_half_down": scrollHalfPageWithCursor(state, -1);   return;
       case "scroll_page_up":   scrollFullPageWithCursor(state, 1);    return;
@@ -472,7 +484,6 @@ function handleScrollAction(action: Action, state: RenderState): void {
   // Viewport-only (prompt focused, sidebar, etc.)
   switch (action) {
     case "scroll_line_up":   scrollLineUp(state);   break;
-    case "scroll_line_down": scrollLineDown(state);  break;
     case "scroll_half_up":   scrollHalfUp(state);    break;
     case "scroll_half_down": scrollHalfDown(state);  break;
     case "scroll_page_up":   scrollPageUp(state);    break;

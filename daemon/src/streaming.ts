@@ -147,6 +147,17 @@ export function drainQueuedMessages(convId: string, timing?: QueueTiming): Queue
   return drained;
 }
 
+/** Remove the first queued message with matching text. Returns true if found. */
+export function removeQueuedMessage(convId: string, text: string): boolean {
+  const queue = messageQueues.get(convId);
+  if (!queue) return false;
+  const idx = queue.findIndex(qm => qm.text === text);
+  if (idx === -1) return false;
+  queue.splice(idx, 1);
+  if (queue.length === 0) messageQueues.delete(convId);
+  return true;
+}
+
 /** Clear all queued messages for a conversation. */
 export function clearQueuedMessages(convId: string): void {
   messageQueues.delete(convId);

@@ -194,6 +194,36 @@ export function createHandler(server: DaemonServer) {
         break;
       }
 
+      case "unqueue_message": {
+        const ok = convStore.removeQueuedMessage(cmd.convId, cmd.text);
+        server.sendTo(client, { type: "ack", reqId: cmd.reqId, convId: cmd.convId });
+        if (ok) log("info", `handler: unqueued message for ${cmd.convId}: "${cmd.text.slice(0, 50)}"`);
+        break;
+      }
+
+      case "unwind_conversation": {
+        const ok = await convStore.unwindTo(cmd.convId, cmd.userMessageIndex);
+        if (!ok) {
+          server.sendTo(client, { type: "error", reqId: cmd.reqId, convId: cmd.convId, message: `Cannot unwind conversation ${cmd.convId}` });
+          break;
+        }
+        log("info", `handler: unwound conversation ${cmd.convId} to before user message ${cmd.userMessageIndex}`);
+        // Respond with the truncated state (reuse conversation_loaded)
+        const data = convStore.getDisplayData(cmd.convId);
+        if (data) {
+          server.sendTo(client, {
+            type: "conversation_loaded",
+            reqId: cmd.reqId,
+            convId: data.convId,
+            model: data.model,
+            entries: data.entries,
+            contextTokens: data.contextTokens,
+          });
+        }
+        server.broadcast({ type: "conversation_updated", summary: convStore.getSummary(cmd.convId)! });
+        break;
+      }
+
       case "load_conversation": {
         const data = convStore.getDisplayData(cmd.convId);
         if (!data) {

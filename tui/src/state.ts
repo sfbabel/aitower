@@ -36,6 +36,23 @@ export interface QueuePromptState {
   selection: QueueTiming;  // which option is highlighted
 }
 
+// ── Edit message modal types ──────────────────────────────────────
+
+export interface EditMessageItem {
+  /** Index counting only user messages (0-based). -1 for queued messages. */
+  userMessageIndex: number;
+  text: string;
+  isQueued: boolean;
+  /** Index into state.queuedMessages (only set when isQueued). */
+  queueIndex?: number;
+}
+
+export interface EditMessageState {
+  items: EditMessageItem[];
+  selection: number;        // index into items[]
+  scrollOffset: number;     // for scrolling long lists
+}
+
 /** Cached layout values — set by the renderer, read by scroll functions. */
 export interface LayoutCache {
   totalLines: number;      // total rendered message lines
@@ -95,6 +112,8 @@ export interface RenderState {
   queuePrompt: QueuePromptState | null;
   /** Messages queued for delivery at a specific timing. */
   queuedMessages: QueuedMessage[];
+  /** Edit message modal — non-null when the modal is showing. */
+  editMessagePrompt: EditMessageState | null;
   /** Number of pendingAI blocks already finalized into split AI messages
    *  (from next-turn queued message injection during streaming). */
   pendingAISplitOffset: number;
@@ -145,6 +164,7 @@ export function createInitialState(): RenderState {
     promptScrollOffset: 0,
     queuePrompt: null,
     queuedMessages: [],
+    editMessagePrompt: null,
     pendingAISplitOffset: 0,
     pendingImages: [],
   };
