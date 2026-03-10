@@ -425,10 +425,10 @@ function renderQueuePromptOverlay(
     const line = contentLines[i];
     const padRight = Math.max(0, innerWidth - line.length);
 
-    let fg = theme.dim;
+    let fg = theme.muted;
     let bg = theme.sidebarBg;
-    if (i === 0) fg = theme.text;   // title
-    if (i === 1) fg = theme.dim;    // preview
+    if (i === 0) fg = theme.text;    // title
+    if (i === 1) fg = theme.muted;   // preview
 
     if (i === 3 || i === 4) {
       // Options
@@ -445,7 +445,7 @@ function renderQueuePromptOverlay(
     result += move_to(row, boxLeft);
     result += `${theme.sidebarBg}${theme.accent}│${bg}${fg}`;
     result += `${line}${" ".repeat(padRight)}`;
-    result += `${theme.sidebarBg}${theme.accent}│${theme.reset}`;
+    result += `${theme.reset}${theme.sidebarBg}${theme.accent}│${theme.reset}`;
   }
 
   // Bottom border
