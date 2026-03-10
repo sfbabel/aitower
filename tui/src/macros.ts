@@ -77,11 +77,8 @@ const MACROS: MacroDef[] = [
 
 // ── Derived exports ──────────────────────────────────────────────
 
-/** Autocomplete entries for macros (base names + compound "cmd arg" forms). */
-export const MACRO_LIST: CompletionItem[] = MACROS.flatMap(m => [
-  { name: m.name, desc: m.desc },
-  ...(m.args ?? []).map(a => ({ name: `${m.name} ${a.name}`, desc: a.desc })),
-]);
+/** Autocomplete entries for macros (base names only — args appear after selecting the base command). */
+export const MACRO_LIST: CompletionItem[] = MACROS.map(m => ({ name: m.name, desc: m.desc }));
 
 /** Expansion text for each macro, keyed by "/name" or "/name arg". */
 export const MACRO_MAP: Record<string, string> = Object.fromEntries(
