@@ -90,7 +90,10 @@ export function handleSidebarAction(action: string, sidebar: SidebarState): Side
         // Second d — confirm deletion
         sidebar.pendingDeleteId = null;
         sidebar.conversations.splice(sidebar.selectedIndex, 1);
-        syncSelectedIndex(sidebar);
+        // Focus the next conversation (now at the same index after splice),
+        // clamping to the last item when deleting the tail entry.
+        sidebar.selectedIndex = Math.max(0, Math.min(sidebar.selectedIndex, sidebar.conversations.length - 1));
+        sidebar.selectedId = sidebar.conversations[sidebar.selectedIndex]?.id ?? null;
         return { type: "delete_conversation", convId: selectedConv.id };
       }
 
