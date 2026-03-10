@@ -7,7 +7,7 @@
  */
 
 import type { RenderState } from "./state";
-import { renderStatusLine, statusLineHeight } from "./statusline";
+import { renderStatusLine } from "./statusline";
 import { renderTopbar } from "./topbar";
 import { renderSidebar, SIDEBAR_WIDTH } from "./sidebar";
 import { buildMessageLines } from "./conversation";
@@ -122,8 +122,9 @@ export function render(state: RenderState): void {
   const inputRowCount = inputLines.length;
 
   // ── Bottom layout: sep | input rows | sep | status ────────────
-  const slHeight = statusLineHeight(state, chatW);
-  const statusLines = renderStatusLine(state, chatW);
+  const statusResult = renderStatusLine(state, chatW);
+  const slHeight = statusResult.height;
+  const statusLines = statusResult.lines;
   const bottomUsed = 1 + inputRowCount + 1 + slHeight;
   const sepAbove = rows - bottomUsed + 1;
   const firstInputRow = sepAbove + 1;

@@ -34,16 +34,18 @@ const VALID_ARGS: Record<string, Set<string>> = {
 
 interface Span { start: number; end: number }
 
+const COMMAND_SPAN_RE = /(^|[ \t\n])(\/[\w-]+)(?:[ \t]+([\w-]+))?/gm;
+
 /**
  * Find buffer ranges that contain valid command/macro tokens.
  * Each span covers the command name and, if present, a recognized argument.
  */
 function findCommandSpans(buffer: string): Span[] {
   const spans: Span[] = [];
-  const regex = /(^|[ \t\n])(\/[\w-]+)(?:[ \t]+([\w-]+))?/gm;
+  COMMAND_SPAN_RE.lastIndex = 0;
 
   let match;
-  while ((match = regex.exec(buffer)) !== null) {
+  while ((match = COMMAND_SPAN_RE.exec(buffer)) !== null) {
     const boundary = match[1];
     const cmd = match[2];
     const arg = match[3];
