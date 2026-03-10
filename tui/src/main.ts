@@ -16,7 +16,7 @@ import { tryCommand } from "./commands";
 import { expandMacros } from "./macros";
 import { render } from "./render";
 import { enter_alt, leave_alt, hide_cursor, show_cursor, enable_bracketed_paste, disable_bracketed_paste } from "./terminal";
-import { createInitialState, isStreaming } from "./state";
+import { createInitialState, isStreaming, clearPendingAI } from "./state";
 import { createPendingAI } from "./messages";
 import { handleEvent } from "./events";
 import { confirmQueueMessage, cancelQueuePrompt, clearLocalQueue } from "./queue";
@@ -166,7 +166,7 @@ function handleKey(key: KeyEvent): void {
       if (state.convId) daemon.unsubscribe(state.convId);
       state.convId = null;
       state.messages = [];
-      state.pendingAI = null;
+      clearPendingAI(state);
       state.contextTokens = null;
       break;
     case "delete_conversation":
@@ -175,7 +175,7 @@ function handleKey(key: KeyEvent): void {
       if (state.convId === result.convId) {
         state.convId = null;
         state.messages = [];
-        state.pendingAI = null;
+        clearPendingAI(state);
         state.contextTokens = null;
       }
       break;
@@ -232,7 +232,7 @@ async function main(): Promise<void> {
   daemon.ping();
 
   daemon.onConnectionLost(() => {
-    state.pendingAI = null;
+    clearPendingAI(state);
     state.messages.push({ role: "system", text: "✗ Lost connection to daemon.", color: theme.error, metadata: null });
     scheduleRender();
     setTimeout(() => { running = false; }, 2000);

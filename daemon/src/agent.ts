@@ -257,12 +257,19 @@ export async function runAgentLoop(
     }
     callbacks.onRoundComplete?.();
 
-    // Inject "next-turn" queued messages between rounds
+    // Inject "next-turn" queued messages between rounds.
+    // Only completedMessages is updated — user messages don't produce
+    // display blocks, so completedBlocks stays unchanged.
     const nextTurn = callbacks.drainNextTurnMessages?.() ?? [];
     for (const qm of nextTurn) {
       messages.push(qm);
       newMessages.push(qm);
       log("info", `agent: injected next-turn queued message`);
+    }
+    // Update recovery state to include injected messages so abort
+    // persists them in the right order alongside completed rounds.
+    if (state && nextTurn.length > 0) {
+      state.completedMessages = [...newMessages];
     }
 
     // Continue loop → next API call with tool results

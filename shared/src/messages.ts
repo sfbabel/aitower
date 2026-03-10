@@ -71,7 +71,7 @@ export interface UserMessage {
 export interface AIMessage {
   role: "assistant";
   blocks: Block[];
-  metadata: MessageMetadata;
+  metadata: MessageMetadata | null;
 }
 
 /**

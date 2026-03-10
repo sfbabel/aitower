@@ -413,15 +413,3 @@ function getFilesystemMatches(pathToken: string): CompletionItem[] {
     return [];
   }
 }
-
-/** Find the longest common prefix among an array of strings. */
-function longestCommonPrefix(strings: string[]): string {
-  if (strings.length === 0) return "";
-  let prefix = strings[0];
-  for (let i = 1; i < strings.length; i++) {
-    while (!strings[i].startsWith(prefix)) {
-      prefix = prefix.slice(0, -1);
-    }
-  }
-  return prefix;
-}

@@ -29,7 +29,7 @@ export interface OrchestrationCallbacks {
 
 export async function orchestrateSendMessage(
   server: DaemonServer,
-  client: ConnectedClient,
+  client: ConnectedClient | null,
   reqId: string | undefined,
   convId: string,
   text: string,
@@ -38,17 +38,17 @@ export async function orchestrateSendMessage(
 ): Promise<void> {
   const auth = loadAuth();
   if (!auth?.tokens?.accessToken) {
-    server.sendTo(client, { type: "error", reqId, convId, message: "Not authenticated. Run: bun run login (in daemon/)" });
+    if (client) server.sendTo(client, { type: "error", reqId, convId, message: "Not authenticated. Run: bun run login (in daemon/)" });
     return;
   }
 
   const conv = convStore.get(convId);
   if (!conv) {
-    server.sendTo(client, { type: "error", reqId, convId, message: `Conversation ${convId} not found` });
+    if (client) server.sendTo(client, { type: "error", reqId, convId, message: `Conversation ${convId} not found` });
     return;
   }
   if (convStore.isStreaming(convId)) {
-    server.sendTo(client, { type: "error", reqId, convId, message: "Already streaming" });
+    if (client) server.sendTo(client, { type: "error", reqId, convId, message: "Already streaming" });
     return;
   }
 
@@ -56,8 +56,14 @@ export async function orchestrateSendMessage(
   conv.updatedAt = Date.now();
   convStore.bumpToTop(convId);
 
-  // Notify other subscribers about the user message (sender already added it locally)
-  server.sendToSubscribersExcept(convId, { type: "user_message", convId, text }, client);
+  // Notify subscribers about the user message.
+  // When client is set, it already added the message locally — skip it.
+  // When client is null (daemon-initiated, e.g. queued message drain), notify everyone.
+  if (client) {
+    server.sendToSubscribersExcept(convId, { type: "user_message", convId, text }, client);
+  } else {
+    server.sendToSubscribers(convId, { type: "user_message", convId, text });
+  }
 
   const ac = new AbortController();
   convStore.setActiveJob(convId, ac, startedAt);
@@ -180,15 +186,16 @@ export async function orchestrateSendMessage(
 
       const apiMsgs: import("./messages").ApiMessage[] = [];
       for (const qm of drained) {
-        // Persist the user message
-        conv.messages.push({ role: "user", content: qm.text, metadata: null });
+        // Don't push to conv.messages here — the agent loop includes
+        // injected messages in newMessages/completedMessages, and the
+        // normal persistence path (success or abort) pushes them to
+        // conv.messages in the correct order.
         // Broadcast to TUI subscribers so they see the queued message appear
         server.sendToSubscribers(convId, { type: "user_message", convId, text: qm.text });
         // Build API-level message for the agent loop
         apiMsgs.push({ role: "user", content: qm.text });
         log("info", `orchestrator: injected next-turn message: "${qm.text.slice(0, 50)}"`);
       }
-      convStore.markDirty(convId);
       return apiMsgs;
     },
   };
@@ -339,11 +346,11 @@ export async function orchestrateSendMessage(
     server.broadcast({ type: "conversation_updated", summary: convStore.getSummary(convId)! });
     ext.onComplete();
 
-    // Drain message-end queued messages — send the first as a new turn,
+    // Drain all remaining queued messages — send the first as a new turn,
     // re-queue the rest (they'll drain on the next streaming_stopped).
-    const remaining = convStore.drainQueuedMessages(convId, "next-turn");
-    const messageEnd = convStore.drainQueuedMessages(convId, "message-end");
-    const allQueued = [...remaining, ...messageEnd];
+    // A single drain-all avoids double-sending next-turn messages that
+    // were already injected by drainNextTurnMessages during the agent loop.
+    const allQueued = convStore.drainQueuedMessages(convId);
     if (allQueued.length > 0) {
       const first = allQueued[0];
       // Re-queue the rest for the next cycle
@@ -351,8 +358,9 @@ export async function orchestrateSendMessage(
         convStore.pushQueuedMessage(convId, allQueued[i].text, allQueued[i].timing);
       }
       log("info", `orchestrator: draining queued message-end: "${first.text.slice(0, 50)}"`);
-      // Kick off a new send cycle asynchronously
-      orchestrateSendMessage(server, client, undefined, convId, first.text, Date.now(), ext);
+      // Kick off a new send cycle — null client so user_message broadcasts to everyone
+      // (the originating client's local queue shadow was already cleared)
+      orchestrateSendMessage(server, null, undefined, convId, first.text, Date.now(), ext);
     }
   }
 }

@@ -110,6 +110,7 @@ export function remove(id: string): boolean {
   if (existed) {
     dirty.delete(id);
     streaming.clearActiveJob(id);
+    streaming.clearQueuedMessages(id);
     persistence.trashFile(id);
   }
   return existed;

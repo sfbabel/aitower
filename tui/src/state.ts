@@ -95,11 +95,20 @@ export interface RenderState {
   queuePrompt: QueuePromptState | null;
   /** Messages queued for delivery at a specific timing. */
   queuedMessages: QueuedMessage[];
+  /** Number of pendingAI blocks already finalized into split AI messages
+   *  (from next-turn queued message injection during streaming). */
+  pendingAISplitOffset: number;
 }
 
 /** Streaming state is derived from pendingAI — no separate boolean. */
 export function isStreaming(state: RenderState): boolean {
   return state.pendingAI !== null;
+}
+
+/** Clear pending AI state — always use this instead of setting pendingAI = null directly. */
+export function clearPendingAI(state: RenderState): void {
+  state.pendingAI = null;
+  state.pendingAISplitOffset = 0;
 }
 
 export function createInitialState(): RenderState {
@@ -134,6 +143,7 @@ export function createInitialState(): RenderState {
     promptScrollOffset: 0,
     queuePrompt: null,
     queuedMessages: [],
+    pendingAISplitOffset: 0,
   };
   // App starts in insert mode — mark entry so first Esc commits the session
   markInsertEntry(s.undo, s.inputBuffer, s.cursorPos);

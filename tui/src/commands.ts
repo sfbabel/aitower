@@ -9,6 +9,7 @@
  */
 
 import type { RenderState } from "./state";
+import { clearPendingAI } from "./state";
 import { clearPrompt } from "./promptline";
 import type { ModelId } from "./messages";
 
@@ -64,7 +65,7 @@ const commands: SlashCommand[] = [
     description: "Start a new conversation",
     handler: (_text, state) => {
       state.messages = [];
-      state.pendingAI = null;
+      clearPendingAI(state);
       clearPrompt(state);
       state.scrollOffset = 0;
       state.contextTokens = null;

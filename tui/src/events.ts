@@ -6,9 +6,9 @@
  */
 
 import type { RenderState } from "./state";
-import { isStreaming } from "./state";
+import { isStreaming, clearPendingAI } from "./state";
 import { ensureCurrentBlock, createPendingAI, sortConversations } from "./messages";
-import type { SystemMessage } from "./messages";
+import type { AIMessage, SystemMessage } from "./messages";
 import { updateConversationList, updateConversation, syncSelectedIndex } from "./sidebar";
 import { theme } from "./theme";
 import type { Event } from "./protocol";
@@ -37,7 +37,7 @@ export function handleEvent(
 
       // If we had a pending message, send it now
       if (state.pendingSend.active && state.pendingSend.text && state.pendingAI) {
-        daemon.sendMessage(event.convId, state.pendingSend.text, state.pendingAI.metadata.startedAt);
+        daemon.sendMessage(event.convId, state.pendingSend.text, state.pendingAI.metadata!.startedAt);
         state.pendingSend.text = "";
         state.pendingSend.active = false;
       }
@@ -115,7 +115,7 @@ export function handleEvent(
     case "tokens_update": {
       if (event.convId !== state.convId) break;
       if (state.pendingAI) {
-        state.pendingAI.metadata.tokens = event.tokens;
+        state.pendingAI.metadata!.tokens = event.tokens;
       }
       break;
     }
@@ -129,13 +129,17 @@ export function handleEvent(
     case "message_complete": {
       if (event.convId !== state.convId) break;
       if (state.pendingAI) {
-        // Use the daemon's canonical data — catches anything a late-joining
-        // client missed during streaming.
-        state.pendingAI.blocks = event.blocks;
-        state.pendingAI.metadata.endedAt = event.endedAt;
-        state.pendingAI.metadata.tokens = event.tokens;
+        if (state.pendingAISplitOffset === 0) {
+          // Normal case — use the daemon's canonical data (catches anything
+          // a late-joining client missed during streaming).
+          state.pendingAI.blocks = event.blocks;
+        }
+        // When splits happened, earlier blocks are already finalized in
+        // state.messages — keep the blocks that arrived via streaming.
+        state.pendingAI.metadata!.endedAt = event.endedAt;
+        state.pendingAI.metadata!.tokens = event.tokens;
         state.messages.push(state.pendingAI);
-        state.pendingAI = null;
+        clearPendingAI(state);
       }
       break;
     }
@@ -146,14 +150,19 @@ export function handleEvent(
       // On abort/error, pendingAI is still live — finalize with persisted blocks.
       if (state.pendingAI) {
         if (event.persistedBlocks !== undefined) {
-          state.pendingAI.blocks = event.persistedBlocks;
+          if (state.pendingAISplitOffset > 0) {
+            // Earlier blocks already finalized — only apply the remainder
+            state.pendingAI.blocks = event.persistedBlocks.slice(state.pendingAISplitOffset);
+          } else {
+            state.pendingAI.blocks = event.persistedBlocks;
+          }
         }
         if (state.pendingAI.blocks.length > 0) {
-          state.pendingAI.metadata.endedAt ??= Date.now();
+          state.pendingAI.metadata!.endedAt ??= Date.now();
           state.messages.push(state.pendingAI);
         }
-        state.pendingAI = null;
       }
+      clearPendingAI(state);
 
       // Flush system messages that arrived during streaming (after the AI message)
       for (const msg of state.systemMessageBuffer) {
@@ -209,7 +218,7 @@ export function handleEvent(
       if (state.convId === event.convId) {
         state.convId = null;
         state.messages = [];
-        state.pendingAI = null;
+        clearPendingAI(state);
         state.contextTokens = null;
       }
       break;
@@ -242,7 +251,7 @@ export function handleEvent(
         daemon.unsubscribe(state.convId);
       }
       state.messages = [];
-      state.pendingAI = null;
+      clearPendingAI(state);
       state.convId = event.convId;
       state.model = event.model;
       state.scrollOffset = 0;
@@ -289,7 +298,37 @@ export function handleEvent(
 
     case "user_message": {
       if (event.convId !== state.convId) break;
+
+      // During streaming: split pendingAI so the user message appears
+      // inline between tool rounds (after completed blocks, before new ones).
+      if (state.pendingAI && state.pendingAI.blocks.length > 0) {
+        // Finalize current blocks as an intermediate AI message (no metadata footer)
+        const finalized: AIMessage = {
+          role: "assistant",
+          blocks: [...state.pendingAI.blocks],
+          metadata: null,
+        };
+        state.messages.push(finalized);
+
+        // Track how many blocks were split off for message_complete / streaming_stopped
+        state.pendingAISplitOffset += state.pendingAI.blocks.length;
+
+        // Create fresh pendingAI for subsequent streaming blocks
+        state.pendingAI = createPendingAI(
+          state.pendingAI.metadata!.startedAt,
+          state.pendingAI.metadata!.model,
+        );
+      }
+
       state.messages.push({ role: "user", text: event.text, metadata: null });
+
+      // Remove matching local shadow — the daemon already injected it
+      const idx = state.queuedMessages.findIndex(
+        qm => qm.convId === event.convId && qm.text === event.text,
+      );
+      if (idx !== -1) state.queuedMessages.splice(idx, 1);
+
+      state.scrollOffset = 0;
       break;
     }
 
