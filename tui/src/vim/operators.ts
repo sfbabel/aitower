@@ -90,3 +90,34 @@ export function openLineAbove(buffer: string, pos: number): BufferEdit {
   const newBuffer = buffer.slice(0, ls) + "\n" + buffer.slice(ls);
   return { buffer: newBuffer, cursor: ls };
 }
+
+// ── Case operators ────────────────────────────────────────────────
+
+/** Swap the case of every character in [start, end). */
+function toggleCase(text: string): string {
+  let out = "";
+  for (const ch of text) {
+    out += ch === ch.toUpperCase() ? ch.toLowerCase() : ch.toUpperCase();
+  }
+  return out;
+}
+
+/** ~ (normal) — swap case of `count` characters starting at pos, advance cursor. */
+export function swapCase(buffer: string, pos: number, count: number): BufferEdit {
+  const le = lineEndOf(buffer, pos);
+  // Clamp count so we don't cross the newline / buffer end
+  const end = Math.min(pos + count, le);
+  if (pos >= end) return { buffer, cursor: pos };
+  const swapped = toggleCase(buffer.slice(pos, end));
+  const newBuffer = buffer.slice(0, pos) + swapped + buffer.slice(end);
+  // Cursor lands on the last swapped character (clamped to line)
+  return { buffer: newBuffer, cursor: clampNormal(newBuffer, end) };
+}
+
+/** ~ (visual) — swap case of [start, end), cursor goes to start. */
+export function swapCaseRange(buffer: string, start: number, end: number): BufferEdit {
+  if (start > end) [start, end] = [end, start];
+  const swapped = toggleCase(buffer.slice(start, end));
+  const newBuffer = buffer.slice(0, start) + swapped + buffer.slice(end);
+  return { buffer: newBuffer, cursor: clampNormal(newBuffer, start) };
+}

@@ -60,6 +60,7 @@ const KEYMAP: KeymapEntry[] = [
   { mode: "normal", context: "prompt", key: "O",  command: { type: "standalone", name: "open_above" } },
   { mode: "normal", context: "prompt", key: "p",  command: { type: "standalone", name: "paste_after" } },
   { mode: "normal", context: "prompt", key: "P",  command: { type: "standalone", name: "paste_before" } },
+  { mode: "normal", context: "prompt", key: "~",  command: { type: "standalone", name: "swap_case" } },
 
   // ── Normal mode: history (cursor navigation) ─────────────────────
 
@@ -128,6 +129,7 @@ const KEYMAP: KeymapEntry[] = [
   { mode: "visual", context: "prompt", key: "x",  command: { type: "standalone", name: "visual_delete" } },
   { mode: "visual", context: "prompt", key: "c",  command: { type: "standalone", name: "visual_change" } },
   { mode: "visual", context: "prompt", key: "y",  command: { type: "standalone", name: "visual_yank" } },
+  { mode: "visual", context: "prompt", key: "~",  command: { type: "standalone", name: "visual_swap_case" } },
 
   // ── Visual mode: history (motions + yank only) ──────────────────
   { mode: "visual", context: "history", key: "h",  command: { type: "action", action: "history_left" } },
@@ -155,6 +157,7 @@ const KEYMAP: KeymapEntry[] = [
   { mode: "visual-line", context: "prompt", key: "x",  command: { type: "standalone", name: "visual_delete" } },
   { mode: "visual-line", context: "prompt", key: "c",  command: { type: "standalone", name: "visual_change" } },
   { mode: "visual-line", context: "prompt", key: "y",  command: { type: "standalone", name: "visual_yank" } },
+  { mode: "visual-line", context: "prompt", key: "~",  command: { type: "standalone", name: "visual_swap_case" } },
 
   { mode: "visual-line", context: "history", key: "j",  command: { type: "action", action: "history_down" } },
   { mode: "visual-line", context: "history", key: "k",  command: { type: "action", action: "history_up" } },
