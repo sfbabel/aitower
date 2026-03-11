@@ -771,16 +771,16 @@ export const context: Tool = {
   },
   systemHint: undefined,
   display: {
-    label: "Ctx",
-    color: "#c792ea",
+    label: "Context",
+    color: "#e2b35e",  // warm gold
   },
   summarize(input) {
     const action = (input.action as string) ?? "?";
-    if (action === "list") return { label: "Ctx", detail: "list" };
+    if (action === "list") return { label: "Context", detail: "list" };
     const start = input.start as number | undefined;
     const end = input.end as number | undefined;
     const range = start != null && end != null ? `${start}–${end}` : "?";
-    return { label: "Ctx", detail: `${action} ${range}` };
+    return { label: "Context", detail: `${action} ${range}` };
   },
   // Stub — never called; executor routes to executeContext()
   async execute() {
