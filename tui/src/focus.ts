@@ -35,6 +35,7 @@ import {
 import { handleMessageTextObject } from "./vim/message";
 import { dismissAutocomplete } from "./autocomplete";
 import { handleQueuePromptKey } from "./queue";
+import { handleEditMessageKey, openEditMessageModal } from "./editmessage";
 import { readClipboardImage } from "./clipboard";
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -55,7 +56,9 @@ export type KeyResult =
   | { type: "clone_conversation"; convId: string }
   | { type: "new_conversation" }
   | { type: "queue_confirm" }
-  | { type: "queue_cancel" };
+  | { type: "queue_cancel" }
+  | { type: "edit_message_confirm" }
+  | { type: "edit_message_cancel" };
 
 // ── Key routing ─────────────────────────────────────────────────────
 
@@ -65,6 +68,14 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
     const qr = handleQueuePromptKey(key, state);
     if (qr.type === "confirm") return { type: "queue_confirm" };
     if (qr.type === "cancel")  return { type: "queue_cancel" };
+    return { type: "handled" };
+  }
+
+  // ── Edit message modal — intercept all keys when showing ─────
+  if (state.editMessagePrompt) {
+    const er = handleEditMessageKey(key, state);
+    if (er.type === "confirm") return { type: "edit_message_confirm" };
+    if (er.type === "cancel")  return { type: "edit_message_cancel" };
     return { type: "handled" };
   }
 
@@ -111,6 +122,9 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
       return { type: "handled" };
     case "new_conversation":
       return { type: "new_conversation" };
+    case "edit_message":
+      openEditMessageModal(state);
+      return { type: "handled" };
     case "focus_history":
       // Toggle: if already in history → back to prompt, otherwise → history
       if (state.panelFocus === "chat" && state.chatFocus === "history") {

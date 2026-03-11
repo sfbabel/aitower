@@ -20,6 +20,7 @@ import { createInitialState, isStreaming, clearPendingAI } from "./state";
 import { createPendingAI, type ImageAttachment } from "./messages";
 import { handleEvent } from "./events";
 import { confirmQueueMessage, cancelQueuePrompt, clearLocalQueue } from "./queue";
+import { confirmEditMessage, cancelEditMessage } from "./editmessage";
 import { theme } from "./theme";
 import type { Event } from "./protocol";
 
@@ -164,6 +165,25 @@ function handleKey(key: KeyEvent): void {
     }
     case "queue_cancel":
       cancelQueuePrompt(state);
+      break;
+    case "edit_message_confirm": {
+      const er = confirmEditMessage(state);
+      if (er.action === "edit_queued") {
+        // Remove from local shadow by text match + tell daemon
+        const idx = state.queuedMessages.findIndex(
+          qm => qm.convId === state.convId && qm.text === er.text,
+        );
+        if (idx !== -1) state.queuedMessages.splice(idx, 1);
+        if (state.convId) daemon.unqueueMessage(state.convId, er.text);
+      } else if (er.action === "edit_sent" && state.convId) {
+        // The daemon's unwindTo handles abort internally if streaming,
+        // waits for the stream to stop, then truncates.
+        daemon.unwindConversation(state.convId, er.userMessageIndex);
+      }
+      break;
+    }
+    case "edit_message_cancel":
+      cancelEditMessage(state);
       break;
     case "quit":
       running = false;

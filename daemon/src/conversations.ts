@@ -6,7 +6,7 @@
  * In-flight stream tracking lives in streaming.ts.
  */
 
-import type { Conversation, ModelId, ConversationSummary } from "./messages";
+import type { Conversation, ModelId, ConversationSummary, StoredMessage, ApiContentBlock } from "./messages";
 import { createConversation, sortConversations, displayName, extractPreview } from "./messages";
 import { buildDisplayData, type ConversationDisplayData } from "./display";
 import { summarizeTool } from "./tools/registry";
@@ -19,7 +19,7 @@ export {
   isStreaming, setActiveJob, getActiveJob, clearActiveJob, getStreamingStartedAt,
   resetChunkCounter,
   initStreamingBlocks, getStreamingBlocks, pushStreamingBlock, appendToStreamingBlock, clearStreamingBlocks,
-  getQueuedMessages, pushQueuedMessage, drainQueuedMessages, clearQueuedMessages,
+  getQueuedMessages, pushQueuedMessage, drainQueuedMessages, clearQueuedMessages, removeQueuedMessage,
 } from "./streaming";
 
 // ── State ───────────────────────────────────────────────────────────
@@ -141,6 +141,68 @@ export function rename(id: string, title: string): boolean {
   markDirty(id);
   flush(id);
   return true;
+}
+
+/**
+ * Unwind a conversation to before the Nth user message (0-based).
+ * Removes that user message and everything after it.
+ * Also aborts any active stream and clears any queued messages.
+ * Returns a promise that resolves when any active stream has stopped.
+ */
+export async function unwindTo(id: string, userMessageIndex: number): Promise<boolean> {
+  const conv = conversations.get(id);
+  if (!conv) return false;
+
+  // Validate the index before doing anything destructive.
+  // Only count real user messages — tool_result messages also have
+  // role="user" but are invisible in the TUI (folded into AI entries).
+  let spliceAt = -1;
+  let userCount = 0;
+  for (let i = 0; i < conv.messages.length; i++) {
+    if (conv.messages[i].role === "user" && !isToolResultMessage(conv.messages[i])) {
+      if (userCount === userMessageIndex) { spliceAt = i; break; }
+      userCount++;
+    }
+  }
+  if (spliceAt === -1) return false;
+
+  // Clear queued messages first — prevents the orchestrator's finally block
+  // from draining the queue and starting a new stream after we abort.
+  streaming.clearQueuedMessages(id);
+
+  // Abort any active stream and wait for it to fully stop
+  const ac = streaming.getActiveJob(id);
+  if (ac) {
+    ac.abort();
+    const stopped = await waitForStreamStop(id);
+    if (!stopped) log("warn", `conversations: stream for ${id} did not stop within timeout, unwinding anyway`);
+  }
+
+  conv.messages.splice(spliceAt);
+  conv.updatedAt = Date.now();
+  markDirty(id);
+  flush(id);
+  return true;
+}
+
+/** Wait for a streaming job to finish (poll until activeJob clears). Returns false on timeout. */
+function waitForStreamStop(id: string, timeoutMs = 10_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    const check = () => {
+      if (!streaming.isStreaming(id)) return resolve(true);
+      if (Date.now() >= deadline) return resolve(false);
+      setTimeout(check, 10);
+    };
+    check();
+  });
+}
+
+/** True if the message is a tool_result (role="user" but only contains tool_result blocks). */
+function isToolResultMessage(msg: StoredMessage): boolean {
+  if (typeof msg.content === "string") return false;
+  const blocks = msg.content as ApiContentBlock[];
+  return blocks.length > 0 && blocks.every(b => b.type === "tool_result");
 }
 
 // ── Persistence ─────────────────────────────────────────────────────

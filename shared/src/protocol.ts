@@ -126,6 +126,21 @@ export interface QueueMessageCommand {
   timing: QueueTiming;
 }
 
+export interface UnqueueMessageCommand {
+  type: "unqueue_message";
+  reqId?: string;
+  convId: string;
+  text: string;
+}
+
+export interface UnwindConversationCommand {
+  type: "unwind_conversation";
+  reqId?: string;
+  convId: string;
+  /** Index counting only user messages (0-based). Everything from this message onward is removed. */
+  userMessageIndex: number;
+}
+
 export type Command =
   | PingCommand
   | NewConversationCommand
@@ -143,7 +158,9 @@ export type Command =
   | RenameConversationCommand
   | CloneConversationCommand
   | UndoDeleteCommand
-  | QueueMessageCommand;
+  | QueueMessageCommand
+  | UnqueueMessageCommand
+  | UnwindConversationCommand;
 
 // ── Events (daemon → client) ────────────────────────────────────────
 

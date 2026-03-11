@@ -20,7 +20,7 @@ import { renderLineWithCursor, renderLineWithSelection } from "./cursorrender";
 import { highlightPromptInput } from "./promptHighlight";
 import { formatSize, imageLabel } from "./clipboard";
 
-import type { QueuePromptState } from "./state";
+import type { QueuePromptState, EditMessageState } from "./state";
 
 // ── ANSI positioning (non-color escapes) ────────────────────────────
 
@@ -409,6 +409,11 @@ export function render(state: RenderState): void {
     out.push(renderQueuePromptOverlay(state.queuePrompt, chatW, chatCol, sepAbove));
   }
 
+  // ── Edit message overlay ──────────────────────────────────────
+  if (state.editMessagePrompt) {
+    out.push(renderEditMessageOverlay(state.editMessagePrompt, chatW, chatCol, sepAbove, messageAreaHeight));
+  }
+
   // ── Cursor ─────────────────────────────────────────────────────
   if (promptFocused) {
     const cursorScreenRow = firstInputRow + cursorLine;
@@ -490,6 +495,117 @@ function renderQueuePromptOverlay(
     result += `${theme.sidebarBg}${theme.accent}│${bg}${fg}`;
     result += `${line}${" ".repeat(padRight)}`;
     result += `${theme.reset}${theme.sidebarBg}${theme.accent}│${theme.reset}`;
+  }
+
+  // Bottom border
+  const bottomRow = boxTop + 1 + contentLines.length;
+  if (bottomRow < sepRow) {
+    result += move_to(bottomRow, boxLeft);
+    result += `${theme.sidebarBg}${theme.accent}└${"─".repeat(innerWidth)}┘${theme.reset}`;
+  }
+
+  return result;
+}
+
+// ── Edit message overlay ──────────────────────────────────────────
+
+function renderEditMessageOverlay(
+  em: EditMessageState,
+  chatW: number,
+  chatCol: number,
+  sepRow: number,
+  messageAreaHeight: number,
+): string {
+  let result = "";
+
+  const titleLine = "Edit message:";
+
+  // Build display lines: truncated previews of each item
+  const maxPreviewLen = Math.min(50, chatW - 12);
+  const previews = em.items.map((item) => {
+    const raw = item.text.replace(/\n/g, " ");
+    return raw.length > maxPreviewLen ? raw.slice(0, maxPreviewLen) + "…" : raw;
+  });
+  const maxContentLen = Math.max(
+    titleLine.length,
+    ...previews.map(p => p.length + 2), // +2 for marker "▸ "
+  );
+  const innerWidth = Math.min(maxContentLen + 4, chatW - 4);
+  const boxWidth = innerWidth + 2;
+
+  // Max visible items (leave room for title, blank line, borders)
+  const maxVisible = Math.min(em.items.length, Math.max(3, messageAreaHeight - 4));
+
+  // Scroll window to keep selection visible
+  let scrollStart = em.scrollOffset;
+  if (em.selection < scrollStart) scrollStart = em.selection;
+  if (em.selection >= scrollStart + maxVisible) scrollStart = em.selection - maxVisible + 1;
+  scrollStart = Math.max(0, Math.min(scrollStart, em.items.length - maxVisible));
+  em.scrollOffset = scrollStart;
+
+  // Content: title, blank, visible items
+  const contentLines: { text: string; plain: string; style: "title" | "item" | "blank"; itemIdx?: number }[] = [];
+  contentLines.push({ text: titleLine, plain: titleLine, style: "title" });
+  contentLines.push({ text: "", plain: "", style: "blank" });
+  for (let vi = 0; vi < maxVisible; vi++) {
+    const i = scrollStart + vi;
+    const marker = em.selection === i ? "▸ " : "  ";
+    contentLines.push({
+      text: marker + previews[i],
+      plain: marker + previews[i],
+      style: "item",
+      itemIdx: i,
+    });
+  }
+
+  // Position: centered horizontally, anchored above input separator
+  const boxLeft = chatCol + Math.floor((chatW - boxWidth) / 2);
+  const boxTop = Math.max(3, sepRow - contentLines.length - 2);
+
+  // Top border
+  result += move_to(boxTop, boxLeft);
+  result += `${theme.sidebarBg}${theme.accent}┌${"─".repeat(innerWidth)}┐${theme.reset}`;
+
+  // Content lines
+  for (let i = 0; i < contentLines.length; i++) {
+    const row = boxTop + 1 + i;
+    if (row >= sepRow) break;
+    const cl = contentLines[i];
+    const plainLen = cl.plain.length;
+    const padRight = Math.max(0, innerWidth - plainLen);
+
+    let fg = theme.text;
+    let bg = theme.sidebarBg;
+
+    if (cl.style === "title") {
+      fg = theme.text;
+    } else if (cl.style === "item") {
+      const isSelected = cl.itemIdx === em.selection;
+      const isQueued = cl.itemIdx !== undefined && em.items[cl.itemIdx]?.isQueued;
+      if (isSelected) {
+        bg = theme.sidebarSelBg;
+        fg = isQueued ? theme.muted : theme.accent;
+      } else {
+        fg = isQueued ? theme.muted : theme.text;
+      }
+    }
+
+    result += move_to(row, boxLeft);
+    result += `${theme.sidebarBg}${theme.accent}│${bg}${fg}`;
+    result += `${cl.text}${" ".repeat(padRight)}`;
+    result += `${theme.reset}${theme.sidebarBg}${theme.accent}│${theme.reset}`;
+  }
+
+  // Scroll indicators
+  if (scrollStart > 0) {
+    const indRow = boxTop + 3; // first item row
+    result += move_to(indRow, boxLeft + boxWidth - 3);
+    result += `${theme.sidebarBg}${theme.dim} ▲${theme.reset}`;
+  }
+  if (scrollStart + maxVisible < em.items.length) {
+    const indRow = boxTop + 2 + maxVisible; // last item row
+    result += move_to(indRow, boxLeft + boxWidth - 3);
+    result += `${theme.sidebarBg}${theme.dim} ▼${theme.reset}`;
   }
 
   // Bottom border

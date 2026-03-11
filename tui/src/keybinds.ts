@@ -56,6 +56,7 @@ export type Action =
   | "scroll_bottom"
   // Conversation
   | "new_conversation"
+  | "edit_message"
   // Display toggles
   | "toggle_tool_output"
   // Sidebar navigation (from any panel)
@@ -105,6 +106,9 @@ const BINDS: Record<string, Action> = {
   // Sidebar quick nav (Shift+J/K from any panel)
   "char:J":     "sidebar_next",
   "char:K":     "sidebar_prev",
+
+  // Conversation editing
+  "ctrl-w":     "edit_message",
 
   // Scrolling
   "ctrl-y":     "scroll_line_up",

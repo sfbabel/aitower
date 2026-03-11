@@ -136,6 +136,14 @@ export class DaemonClient {
     this.send({ type: "queue_message", convId, text, timing });
   }
 
+  unqueueMessage(convId: string, text: string): void {
+    this.send({ type: "unqueue_message", convId, text });
+  }
+
+  unwindConversation(convId: string, userMessageIndex: number): void {
+    this.send({ type: "unwind_conversation", convId, userMessageIndex });
+  }
+
   listConversations(): void {
     this.send({ type: "list_conversations" });
   }
