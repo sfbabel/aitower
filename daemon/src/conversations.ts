@@ -19,7 +19,7 @@ export {
   isStreaming, setActiveJob, getActiveJob, clearActiveJob, getStreamingStartedAt,
   resetChunkCounter,
   initStreamingBlocks, getStreamingBlocks, pushStreamingBlock, appendToStreamingBlock, clearStreamingBlocks,
-  pushQueuedMessage, drainQueuedMessages, clearQueuedMessages, removeQueuedMessage,
+  getQueuedMessages, pushQueuedMessage, drainQueuedMessages, clearQueuedMessages, removeQueuedMessage,
 } from "./streaming";
 
 // ── State ───────────────────────────────────────────────────────────

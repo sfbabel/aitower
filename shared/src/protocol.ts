@@ -276,6 +276,11 @@ export type DisplayEntry =
   | { type: "ai"; blocks: Block[]; metadata: MessageMetadata | null }
   | { type: "system"; text: string; color?: string };
 
+export interface QueuedMessageInfo {
+  text: string;
+  timing: QueueTiming;
+}
+
 export interface ConversationLoadedEvent {
   type: "conversation_loaded";
   reqId?: string;
@@ -285,6 +290,8 @@ export interface ConversationLoadedEvent {
   entries: DisplayEntry[];
   /** Last known input token count for this conversation. */
   contextTokens: number | null;
+  /** Messages currently queued for delivery (so the TUI can show shadows). */
+  queuedMessages?: QueuedMessageInfo[];
 }
 
 export interface ConversationUpdatedEvent {

@@ -12,6 +12,7 @@
 import { streamMessage, type ApiToolCall } from "./api";
 import { log } from "./log";
 import type { ModelId, Block, ToolCallBlock, ToolResultBlock, ApiMessage } from "./messages";
+import { MAX_OUTPUT_CHARS, cap } from "./tools/util";
 
 // ── Callbacks ───────────────────────────────────────────────────────
 
@@ -59,8 +60,9 @@ export interface ToolExecResult {
 /**
  * A function that executes tool calls and returns results.
  * Injected by the caller — the agent loop doesn't know what tools exist.
+ * The optional signal lets the executor abort in-flight tool calls.
  */
-export type ToolExecutor = (calls: ApiToolCall[]) => Promise<ToolExecResult[]>;
+export type ToolExecutor = (calls: ApiToolCall[], signal?: AbortSignal) => Promise<ToolExecResult[]>;
 
 // ── Result ──────────────────────────────────────────────────────────
 
@@ -209,11 +211,18 @@ export async function runAgentLoop(
       break;
     }
 
-    const execResults = await options.executor(result.toolCalls);
+    const execResults = await options.executor(result.toolCalls, options.signal);
 
     // ── Emit tool result blocks + build API tool_result message ───
     const toolResultContent: ApiMessage["content"] = [];
     for (const r of execResults) {
+      // Central safety net: cap tool output so no tool can brick the conversation,
+      // even if the tool's own limiting logic has a bug.
+      if (r.output.length > MAX_OUTPUT_CHARS) {
+        log("warn", `agent: tool '${r.toolName}' output exceeded ${MAX_OUTPUT_CHARS} chars (${r.output.length}), capping`);
+        r.output = cap(r.output);
+      }
+
       const block: ToolResultBlock = {
         type: "tool_result",
         toolCallId: r.toolCallId,
