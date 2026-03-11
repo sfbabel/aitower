@@ -121,7 +121,7 @@ async function executeBrowse(input: Record<string, unknown>, signal?: AbortSigna
               isError: false,
             };
           }
-        } catch {}
+        } catch { /* malformed redirect URL — ignore, proceed with response */ }
       }
 
       if (!res.ok) {

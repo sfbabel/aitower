@@ -30,7 +30,7 @@ export async function handleLogin(): Promise<void> {
       saveAuth({ ...existing, tokens: newTokens, updatedAt: new Date().toISOString() });
       console.log(`  ✓ Session refreshed (${existing.profile?.email ?? "unknown"})\n`);
       return;
-    } catch {}
+    } catch { /* refresh failed — fall through to full login */ }
   }
 
   // Full OAuth flow

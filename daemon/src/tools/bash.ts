@@ -81,9 +81,9 @@ const KILL_GRACE_MS = 200;
  * group — bash, its children, their children, etc.
  */
 function killProcessGroup(pid: number): void {
-  try { process.kill(-pid, "SIGTERM"); } catch {}
+  try { process.kill(-pid, "SIGTERM"); } catch { /* process already exited */ }
   setTimeout(() => {
-    try { process.kill(-pid, "SIGKILL"); } catch {}
+    try { process.kill(-pid, "SIGKILL"); } catch { /* process already exited */ }
   }, KILL_GRACE_MS);
 }
 

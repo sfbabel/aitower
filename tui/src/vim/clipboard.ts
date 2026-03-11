@@ -19,19 +19,19 @@ function detectBackend(): ClipboardBackend {
       Bun.spawnSync(["which", "wl-copy"]);
       backend = "wl";
       return backend;
-    } catch {}
+    } catch { /* wl-copy not available */ }
   }
 
   // X11
   try {
     const r = Bun.spawnSync(["which", "xclip"]);
     if (r.exitCode === 0) { backend = "xclip"; return backend; }
-  } catch {}
+  } catch { /* xclip not available */ }
 
   try {
     const r = Bun.spawnSync(["which", "xsel"]);
     if (r.exitCode === 0) { backend = "xsel"; return backend; }
-  } catch {}
+  } catch { /* xsel not available */ }
 
   backend = null;
   return backend;

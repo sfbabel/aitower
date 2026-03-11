@@ -259,7 +259,7 @@ export async function runAgentLoop(
           content: [
             { type: "image", source: { type: "base64", media_type: r.image.mediaType, data: r.image.base64 } },
             { type: "text", text: r.output },
-          ] as any,
+          ] as unknown[],
           is_error: r.isError,
         });
       } else {
@@ -303,7 +303,7 @@ export async function runAgentLoop(
       }
 
       if (hint) {
-        (toolResultContent as unknown[]).push({ type: "text", text: hint });
+        toolResultContent.push({ type: "text", text: hint } as ApiContentBlock);
         log("info", `agent: injected context pressure hint (${THRESHOLDS[Math.max(0, highestFiredLevel)].level}, ${usage})`);
       }
     }

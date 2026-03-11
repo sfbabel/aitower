@@ -46,14 +46,14 @@ async function isAlreadyRunning(): Promise<boolean> {
     try {
       const pid = parseInt(readFileSync(PID_PATH, "utf-8").trim(), 10);
       if (!isNaN(pid) && pid !== process.pid) {
-        try { process.kill(pid, 0); if (await probeSocket()) return true; } catch {}
+        try { process.kill(pid, 0); if (await probeSocket()) return true; } catch { /* process gone — stale PID */ }
       }
-    } catch {}
-    try { unlinkSync(PID_PATH); } catch {}
+    } catch { /* corrupt PID file — treat as stale */ }
+    try { unlinkSync(PID_PATH); } catch { /* already gone */ }
   }
   if (await probeSocket()) return true;
   if (existsSync(SOCKET_PATH)) {
-    try { unlinkSync(SOCKET_PATH); } catch {}
+    try { unlinkSync(SOCKET_PATH); } catch { /* already gone */ }
   }
   return false;
 }
@@ -82,7 +82,7 @@ async function startDaemon(): Promise<void> {
     log("info", "exocortexd: shutting down");
     convStore.flushAll();
     await server.stop();
-    try { unlinkSync(PID_PATH); } catch {}
+    try { unlinkSync(PID_PATH); } catch { /* best-effort cleanup */ }
     process.exit(0);
   };
   process.on("SIGINT", shutdown);

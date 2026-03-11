@@ -29,7 +29,7 @@ async function executeWrite(input: Record<string, unknown>): Promise<ToolResult>
     const dir = filePath.slice(0, filePath.lastIndexOf("/"));
     if (dir) {
       const { mkdirSync } = await import("fs");
-      try { mkdirSync(dir, { recursive: true }); } catch {}
+      try { mkdirSync(dir, { recursive: true }); } catch { /* directory may already exist */ }
     }
 
     await Bun.write(filePath, content);

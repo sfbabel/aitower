@@ -88,7 +88,7 @@ async function compressImage(
       error: `Error: image is ${formatMB(originalBase64Size)} MB (base64) which exceeds the Claude API limit of ${formatMB(MAX_BASE64_BYTES)} MB. Tried compressing with ImageMagick but still over the limit.`,
     };
   } finally {
-    try { const { unlink } = await import("fs/promises"); await unlink(tmpOut).catch(() => {}); } catch {}
+    try { const { unlink } = await import("fs/promises"); await unlink(tmpOut).catch(() => {}); } catch { /* best-effort temp file cleanup */ }
   }
 }
 

@@ -160,45 +160,24 @@ function migrateV6toV7(data: ConversationFileV6): ConversationFileV7 {
   };
 }
 
-function migrate(data: Record<string, unknown>): ConversationFile {
-  let version = (data.version as number) ?? 1;
+function migrate(raw: Record<string, unknown>): ConversationFile {
+  // Progressive migration — each function validates and upgrades one version.
+  // `any` is intentional at this deserialization boundary: the data is parsed
+  // JSON and each migration step is the type-level validation.
+  let data = raw as any;
 
-  if (version === 1) {
-    data = migrateV1toV2(data as unknown as ConversationFileV1) as unknown as Record<string, unknown>;
-    version = 2;
+  if ((data.version ?? 1) < 2) data = migrateV1toV2(data);
+  if (data.version < 3) data = migrateV2toV3(data);
+  if (data.version < 4) data = migrateV3toV4(data);
+  if (data.version < 5) data = migrateV4toV5(data);
+  if (data.version < 6) data = migrateV5toV6(data);
+  if (data.version < 7) data = migrateV6toV7(data);
+
+  if (data.version !== CURRENT_VERSION) {
+    log("warn", `persistence: unknown schema version ${data.version}, attempting to load as v${CURRENT_VERSION}`);
   }
 
-  if (version === 2) {
-    data = migrateV2toV3(data as unknown as ConversationFileV2) as unknown as Record<string, unknown>;
-    version = 3;
-  }
-
-  if (version === 3) {
-    data = migrateV3toV4(data as unknown as ConversationFileV3) as unknown as Record<string, unknown>;
-    version = 4;
-  }
-
-  if (version === 4) {
-    data = migrateV4toV5(data as unknown as ConversationFileV4) as unknown as Record<string, unknown>;
-    version = 5;
-  }
-
-  if (version === 5) {
-    data = migrateV5toV6(data as unknown as ConversationFileV5) as unknown as Record<string, unknown>;
-    version = 6;
-  }
-
-  if (version === 6) {
-    data = migrateV6toV7(data as unknown as ConversationFileV6) as unknown as Record<string, unknown>;
-    version = 7;
-  }
-
-  if (version === CURRENT_VERSION) {
-    return data as unknown as ConversationFile;
-  }
-
-  log("warn", `persistence: unknown schema version ${version}, attempting to load as v${CURRENT_VERSION}`);
-  return data as unknown as ConversationFile;
+  return data as ConversationFile;
 }
 
 // ── Paths ───────────────────────────────────────────────────────────

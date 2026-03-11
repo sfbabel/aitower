@@ -65,7 +65,7 @@ export class DaemonServer {
       this.server = null;
     }
     if (existsSync(this.socketPath)) {
-      try { unlinkSync(this.socketPath); } catch {}
+      try { unlinkSync(this.socketPath); } catch { /* already gone */ }
     }
     log("info", "server: stopped");
   }
@@ -121,7 +121,7 @@ export class DaemonServer {
 
   sendTo(client: ConnectedClient, event: Event): void {
     if (client.socket.destroyed) return;
-    try { client.socket.write(JSON.stringify(event) + "\n"); } catch {}
+    try { client.socket.write(JSON.stringify(event) + "\n"); } catch { /* socket dead — client will be cleaned up on close */ }
   }
 
   broadcast(event: Event): void {

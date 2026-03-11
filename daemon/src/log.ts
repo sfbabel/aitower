@@ -2,9 +2,13 @@
  * File logger for exocortexd.
  *
  * Writes to ~/.config/exocortex/exocortex.log with automatic rotation at 5 MB.
+ * Log entries are buffered and flushed asynchronously via microtask to avoid
+ * blocking the event loop with synchronous I/O on every call. Rotation is
+ * checked at flush time rather than per-entry. A synchronous flush runs on
+ * process exit to avoid losing final messages.
  */
 
-import { appendFileSync, mkdirSync, existsSync, statSync, renameSync } from "fs";
+import { appendFileSync, appendFile as appendFileCb, mkdirSync, existsSync, statSync, renameSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
@@ -27,15 +31,58 @@ function ensureDir(): void {
   dirEnsured = true;
 }
 
-export function log(level: LogLevel, msg: string): void {
-  if (LEVEL_RANK[level] < minLevel) return;
-  ensureDir();
+// ── Async buffered writes ─────────────────────────────────────────
+
+const buffer: string[] = [];
+let flushScheduled = false;
+
+/** Rotate the log file if it exceeds the size limit. */
+function rotateIfNeeded(): void {
   try {
     const stat = statSync(LOG_FILE);
     if (stat.size >= MAX_LOG_BYTES) {
-      try { renameSync(LOG_FILE, LOG_FILE + ".1"); } catch {}
+      try { renameSync(LOG_FILE, LOG_FILE + ".1"); } catch { /* best-effort rotation */ }
     }
-  } catch {}
+  } catch { /* file doesn't exist yet — nothing to rotate */ }
+}
+
+/** Async flush — called via microtask so multiple log() calls in the same
+ *  synchronous block are batched into a single write. */
+function flushAsync(): void {
+  flushScheduled = false;
+  if (buffer.length === 0) return;
+
+  const content = buffer.join("");
+  buffer.length = 0;
+
+  rotateIfNeeded();
+  appendFileCb(LOG_FILE, content, () => { /* fire-and-forget */ });
+}
+
+/** Synchronous flush — used on process exit to avoid losing final messages. */
+function flushSync(): void {
+  if (buffer.length === 0) return;
+
+  const content = buffer.join("");
+  buffer.length = 0;
+
+  rotateIfNeeded();
+  appendFileSync(LOG_FILE, content);
+}
+
+process.on("exit", flushSync);
+
+// ── Public API ────────────────────────────────────────────────────
+
+export function log(level: LogLevel, msg: string): void {
+  if (LEVEL_RANK[level] < minLevel) return;
+  ensureDir();
+
   const ts = new Date().toISOString();
-  appendFileSync(LOG_FILE, `[${ts}] [${PID}] [${level.toUpperCase()}] ${msg}\n`);
+  buffer.push(`[${ts}] [${PID}] [${level.toUpperCase()}] ${msg}\n`);
+
+  if (!flushScheduled) {
+    flushScheduled = true;
+    queueMicrotask(flushAsync);
+  }
 }

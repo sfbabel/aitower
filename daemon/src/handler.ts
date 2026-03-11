@@ -260,10 +260,11 @@ export function createHandler(server: DaemonServer) {
       }
 
       default: {
+        const unknown = cmd as Record<string, unknown>;
         server.sendTo(client, {
           type: "error",
-          reqId: (cmd as any).reqId,
-          message: `Unknown command: ${(cmd as any).type}`,
+          reqId: unknown.reqId as string | undefined,
+          message: `Unknown command: ${unknown.type}`,
         });
       }
     }
