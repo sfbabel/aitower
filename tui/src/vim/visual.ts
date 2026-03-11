@@ -11,6 +11,7 @@ import { resetPending, keyString } from "./types";
 import { lookupCommand, isPrefix } from "./keymap";
 import { resolveMotion, findForward, findBackward } from "./motions";
 import { lineStartOf, lineEndOf, clampNormal } from "./buffer";
+import { swapCaseRange } from "./operators";
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -154,6 +155,13 @@ function executeVisualCommand(
           vim.mode = "insert";
           resetPending(vim);
           return { type: "visual_edit", buffer: newBuf, cursor: start, mode: "insert" };
+        }
+
+        case "visual_swap_case": {
+          if (context !== "prompt") return exitVisual(vim, cursor);
+          const edit = swapCaseRange(buffer, start, end);
+          exitVisual(vim, edit.cursor);
+          return { type: "visual_edit", buffer: edit.buffer, cursor: edit.cursor, mode: "normal" };
         }
 
         default:

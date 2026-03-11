@@ -458,6 +458,10 @@ function executeStandalone(
       return { type: "yank", text };
     }
 
+    case "swap_case":
+      edit = ops.swapCase(buffer, cursor, count);
+      return { type: "buffer_edit", ...edit };
+
     case "paste_after":
       return { type: "paste", position: "after" };
 
