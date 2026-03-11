@@ -277,11 +277,14 @@ function fromFile(file: ConversationFile): Conversation {
 
 // ── Public API ──────────────────────────────────────────────────────
 
-/** Save a conversation to disk. */
+/** Save a conversation to disk (atomic write-then-rename). */
 export function save(conv: Conversation): void {
   ensureDir();
   const file = toFile(conv);
-  writeFileSync(convPath(conv.id), JSON.stringify(file, null, 2), { mode: 0o600 });
+  const dest = convPath(conv.id);
+  const tmp = dest + ".tmp";
+  writeFileSync(tmp, JSON.stringify(file, null, 2), { mode: 0o600 });
+  renameSync(tmp, dest);
 }
 
 /** Move a conversation file to trash instead of deleting it. */
