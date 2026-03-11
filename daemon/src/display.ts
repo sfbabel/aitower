@@ -9,6 +9,9 @@
 import type { Block, MessageMetadata, ImageAttachment } from "./messages";
 import type { StoredMessage, ApiContentBlock } from "./messages";
 import type { ModelId } from "./messages";
+import type { DisplayEntry } from "@exocortex/shared/protocol";
+
+export type { DisplayEntry };
 
 /** Minimal shape for content parts inside tool_result arrays. */
 interface ContentPart {
@@ -17,11 +20,6 @@ interface ContentPart {
 }
 
 // ── Types ──────────────────────────────────────────────────────────
-
-export type DisplayEntry =
-  | { type: "user"; text: string; images?: ImageAttachment[] }
-  | { type: "ai"; blocks: Block[]; metadata: MessageMetadata | null }
-  | { type: "system"; text: string; color?: string };
 
 export interface ConversationDisplayData {
   convId: string;
@@ -105,7 +103,8 @@ export function buildDisplayData(
         const contentArr = msg.content as ApiContentBlock[];
         const hasToolResults = contentArr.some((c) => c.type === "tool_result");
         if (hasToolResults && currentAI) {
-          // Extract only tool_result blocks — ignore text blocks (e.g. context pressure hints)
+          // Extract only tool_result blocks — text blocks are context
+          // pressure hints injected for the AI and not shown in the TUI.
           const toolResults = contentArr.filter((c) => c.type === "tool_result");
           currentAI.blocks.push(...extractBlocks(toolResults));
           continue;

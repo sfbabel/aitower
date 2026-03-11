@@ -6,8 +6,8 @@
  * In-flight stream tracking lives in streaming.ts.
  */
 
-import type { Conversation, ModelId, ConversationSummary, StoredMessage, ApiContentBlock } from "./messages";
-import { createConversation, sortConversations, displayName, extractPreview } from "./messages";
+import type { Conversation, ModelId, ConversationSummary, StoredMessage } from "./messages";
+import { createConversation, sortConversations, displayName, extractPreview, isToolResultOnly } from "./messages";
 import { buildDisplayData, type ConversationDisplayData } from "./display";
 import { summarizeTool } from "./tools/registry";
 import * as persistence from "./persistence";
@@ -159,7 +159,7 @@ export async function unwindTo(id: string, userMessageIndex: number): Promise<bo
   let spliceAt = -1;
   let userCount = 0;
   for (let i = 0; i < conv.messages.length; i++) {
-    if (conv.messages[i].role === "user" && !isToolResultMessage(conv.messages[i])) {
+    if (conv.messages[i].role === "user" && !isToolResultOnly(conv.messages[i])) {
       if (userCount === userMessageIndex) { spliceAt = i; break; }
       userCount++;
     }
@@ -196,13 +196,6 @@ function waitForStreamStop(id: string, timeoutMs = 10_000): Promise<boolean> {
     };
     check();
   });
-}
-
-/** True if the message is a tool_result (role="user" but only contains tool_result blocks). */
-function isToolResultMessage(msg: StoredMessage): boolean {
-  if (typeof msg.content === "string") return false;
-  const blocks = msg.content as ApiContentBlock[];
-  return blocks.length > 0 && blocks.every(b => b.type === "tool_result");
 }
 
 // ── Persistence ─────────────────────────────────────────────────────

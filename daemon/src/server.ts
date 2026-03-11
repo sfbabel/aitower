@@ -99,7 +99,12 @@ export class DaemonServer {
       if (!line) continue;
 
       try {
-        const cmd: Command = JSON.parse(line);
+        const parsed = JSON.parse(line);
+        if (!parsed || typeof parsed !== "object" || typeof parsed.type !== "string") {
+          this.sendTo(client, { type: "error", message: "Invalid command: missing 'type'" });
+          continue;
+        }
+        const cmd = parsed as Command;
         const result = this.handler(client, cmd);
         if (result instanceof Promise) {
           result.catch((err: Error) => {

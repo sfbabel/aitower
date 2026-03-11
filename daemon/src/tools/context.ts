@@ -15,12 +15,10 @@
 
 import type { Tool, ToolResult } from "./types";
 import type { Conversation, StoredMessage, ApiContentBlock, ApiMessage } from "../messages";
+import { isToolResultOnly } from "../messages";
 import { complete } from "../llm";
 import { log } from "../log";
-
-// ── Constants ─────────────────────────────────────────────────────
-
-const CONTEXT_LIMIT = 200_000;
+import { CONTEXT_LIMIT } from "../constants";
 
 // ── Context tool environment ──────────────────────────────────────
 
@@ -92,12 +90,7 @@ function oneLine(s: string, maxLen = 60): string {
 /** Classify a non-system turn as "user", "assistant", or "tool_result". */
 function turnType(msg: StoredMessage): "user" | "assistant" | "tool_result" {
   if (msg.role === "assistant") return "assistant";
-  // A user message whose content is an array of all tool_result blocks
-  if (Array.isArray(msg.content)) {
-    const allToolResult = msg.content.length > 0 &&
-      msg.content.every((b: ApiContentBlock) => b.type === "tool_result");
-    if (allToolResult) return "tool_result";
-  }
+  if (isToolResultOnly(msg)) return "tool_result";
   return "user";
 }
 
@@ -109,129 +102,95 @@ function hasThinking(msg: StoredMessage): boolean {
 
 // ── Validation helpers ────────────────────────────────────────────
 
+/** Check if an assistant message contains tool_use blocks. */
+function hasToolUse(msg: StoredMessage): boolean {
+  if (!Array.isArray(msg.content)) return false;
+  return msg.content.some((b: ApiContentBlock) => b.type === "tool_use");
+}
+
+/**
+ * Snap a range so it doesn't split tool_use/tool_result atomic pairs.
+ *
+ * An assistant turn with tool_use blocks and the immediately following
+ * tool_result turn are bonded — including one without the other would
+ * break the API contract.  Instead of rejecting with an error, we
+ * expand the boundary outward to include the whole pair.
+ *
+ * Returns the (possibly adjusted) range and whether it was changed.
+ */
+function snapRange(
+  start: number,
+  end: number,
+  turnMap: number[],
+  messages: StoredMessage[],
+  maxModifiable: number,
+): { start: number; end: number; snapped: boolean } {
+  let s = start;
+  let e = end;
+
+  // If `start` lands on a tool_result whose assistant is just before
+  // the range, pull start back to include the assistant.
+  while (s > 0 && turnType(messages[turnMap[s]]) === "tool_result") {
+    s--;
+  }
+
+  // If `end` lands on an assistant with tool_use whose tool_result is
+  // just after the range, push end forward to include the tool_result.
+  while (e < maxModifiable) {
+    const msg = messages[turnMap[e]];
+    if (msg.role === "assistant" && hasToolUse(msg)) {
+      const next = e + 1 < turnMap.length ? messages[turnMap[e + 1]] : null;
+      if (next && turnType(next) === "tool_result") {
+        e++;
+        continue;
+      }
+    }
+    break;
+  }
+
+  return { start: s, end: e, snapped: s !== start || e !== end };
+}
+
 function validateRange(
   input: Record<string, unknown>,
   turnMap: number[],
+  messages: StoredMessage[],
   protectedTailCount: number,
-): { start: number; end: number; error?: string } {
-  const start = input.start as number | undefined;
-  const end = input.end as number | undefined;
+): { start: number; end: number; snapped: boolean; error?: string } {
+  const rawStart = input.start as number | undefined;
+  const rawEnd = input.end as number | undefined;
 
-  if (start == null || end == null) {
-    return { start: 0, end: 0, error: "Both 'start' and 'end' turn indices are required." };
+  if (rawStart == null || rawEnd == null) {
+    return { start: 0, end: 0, snapped: false, error: "Both 'start' and 'end' turn indices are required." };
   }
-  if (!Number.isInteger(start) || !Number.isInteger(end)) {
-    return { start: 0, end: 0, error: "'start' and 'end' must be integers." };
+  if (!Number.isInteger(rawStart) || !Number.isInteger(rawEnd)) {
+    return { start: 0, end: 0, snapped: false, error: "'start' and 'end' must be integers." };
   }
-  if (start < 0 || start >= turnMap.length) {
-    return { start: 0, end: 0, error: `'start' index ${start} is out of range (valid: 0–${turnMap.length - 1}).` };
+  if (rawStart < 0 || rawStart >= turnMap.length) {
+    return { start: 0, end: 0, snapped: false, error: `'start' index ${rawStart} is out of range (valid: 0–${turnMap.length - 1}).` };
   }
-  if (end < 0 || end >= turnMap.length) {
-    return { start: 0, end: 0, error: `'end' index ${end} is out of range (valid: 0–${turnMap.length - 1}).` };
+  if (rawEnd < 0 || rawEnd >= turnMap.length) {
+    return { start: 0, end: 0, snapped: false, error: `'end' index ${rawEnd} is out of range (valid: 0–${turnMap.length - 1}).` };
   }
-  if (start > end) {
-    return { start: 0, end: 0, error: `'start' (${start}) must be <= 'end' (${end}).` };
+  if (rawStart > rawEnd) {
+    return { start: 0, end: 0, snapped: false, error: `'start' (${rawStart}) must be <= 'end' (${rawEnd}).` };
   }
 
   const maxModifiable = turnMap.length - 1 - protectedTailCount;
   if (maxModifiable < 0) {
-    return { start: 0, end: 0, error: "No modifiable turns available." };
+    return { start: 0, end: 0, snapped: false, error: "No modifiable turns available." };
   }
-  if (start > maxModifiable || end > maxModifiable) {
+  if (rawStart > maxModifiable || rawEnd > maxModifiable) {
     return {
-      start, end,
+      start: rawStart, end: rawEnd, snapped: false,
       error: `Turns ${maxModifiable + 1}–${turnMap.length - 1} are protected (current turn). Modifiable range: 0–${maxModifiable}.`,
     };
   }
 
-  return { start, end };
-}
+  // Snap to tool_use/tool_result boundaries
+  const { start, end, snapped } = snapRange(rawStart, rawEnd, turnMap, messages, maxModifiable);
 
-/**
- * Validate that a message array maintains correct tool_use/tool_result
- * pairing after a proposed modification. The Anthropic API auto-merges
- * consecutive same-role messages, so alternation is NOT checked.
- */
-function validateConversationIntegrity(
-  messages: StoredMessage[],
-): { valid: boolean; error?: string } {
-  const nonSystem = messages.filter(m => m.role !== "system");
-
-  if (nonSystem.length === 0) return { valid: true };
-
-  // Check tool_use/tool_result pairing
-  for (let i = 0; i < nonSystem.length; i++) {
-    const msg = nonSystem[i];
-    if (msg.role !== "assistant" || !Array.isArray(msg.content)) continue;
-
-    const toolUseIds = msg.content
-      .filter((b: ApiContentBlock) => b.type === "tool_use")
-      .map((b: ApiContentBlock) => (b as { type: "tool_use"; id: string }).id);
-
-    if (toolUseIds.length === 0) continue;
-
-    // Find the next user message with tool_results
-    const next = nonSystem[i + 1];
-    if (!next || next.role !== "user" || !Array.isArray(next.content)) {
-      return {
-        valid: false,
-        error: `Assistant at position ${i} has tool_use blocks but no following tool_result message.`,
-      };
-    }
-
-    const toolResultIds = new Set(
-      next.content
-        .filter((b: ApiContentBlock) => b.type === "tool_result")
-        .map((b: ApiContentBlock) => (b as { type: "tool_result"; tool_use_id: string }).tool_use_id),
-    );
-
-    for (const id of toolUseIds) {
-      if (!toolResultIds.has(id)) {
-        return {
-          valid: false,
-          error: `tool_use id '${id}' in assistant at position ${i} has no matching tool_result.`,
-        };
-      }
-    }
-  }
-
-  // Check orphaned tool_results
-  for (let i = 0; i < nonSystem.length; i++) {
-    const msg = nonSystem[i];
-    if (msg.role !== "user" || !Array.isArray(msg.content)) continue;
-
-    const toolResultIds = msg.content
-      .filter((b: ApiContentBlock) => b.type === "tool_result")
-      .map((b: ApiContentBlock) => (b as { type: "tool_result"; tool_use_id: string }).tool_use_id);
-
-    if (toolResultIds.length === 0) continue;
-
-    // Previous message must be assistant with matching tool_use
-    const prev = nonSystem[i - 1];
-    if (!prev || prev.role !== "assistant" || !Array.isArray(prev.content)) {
-      return {
-        valid: false,
-        error: `tool_result at position ${i} has no preceding assistant with tool_use blocks.`,
-      };
-    }
-
-    const toolUseIds = new Set(
-      prev.content
-        .filter((b: ApiContentBlock) => b.type === "tool_use")
-        .map((b: ApiContentBlock) => (b as { type: "tool_use"; id: string }).id),
-    );
-
-    for (const id of toolResultIds) {
-      if (!toolUseIds.has(id)) {
-        return {
-          valid: false,
-          error: `tool_result id '${id}' at position ${i} has no matching tool_use in the preceding assistant message.`,
-        };
-      }
-    }
-  }
-
-  return { valid: true };
+  return { start, end, snapped };
 }
 
 // ── Action: list ──────────────────────────────────────────────────
@@ -387,7 +346,7 @@ function actionDelete(
   const { conv, onContextModified, protectedTailCount } = env;
   const turnMap = buildTurnMap(conv.messages);
 
-  const { start, end, error } = validateRange(input, turnMap, protectedTailCount);
+  const { start, end, snapped, error } = validateRange(input, turnMap, conv.messages, protectedTailCount);
   if (error) return { output: error, isError: true };
 
   // Compute savings estimate before deleting
@@ -401,35 +360,10 @@ function actionDelete(
     ? Math.round((removedChars / totalChars) * lastCtx)
     : Math.round(removedChars / 4);
 
-  // Simulate the deletion
+  // Perform the deletion — splice from highest index to lowest
   const indicesToRemove = new Set<number>();
   for (let t = start; t <= end; t++) indicesToRemove.add(turnMap[t]);
 
-  const simulated = conv.messages.filter((_, i) => !indicesToRemove.has(i));
-  const integrity = validateConversationIntegrity(simulated);
-  if (!integrity.valid) {
-    // Try to give a helpful suggestion
-    let suggestion = "";
-    // Check if adjacent turns are needed
-    if (end + 1 < turnMap.length) {
-      const nextMsg = conv.messages[turnMap[end + 1]];
-      if (turnType(nextMsg) === "tool_result") {
-        suggestion = ` Turn ${end + 1} is a tool_result — you may need to include it in the range.`;
-      }
-    }
-    if (start > 0) {
-      const prevMsg = conv.messages[turnMap[start - 1]];
-      if (turnType(prevMsg) === "assistant" && hasToolUse(prevMsg)) {
-        suggestion = ` Turn ${start - 1} is an assistant with tool_use blocks — include it or start after the tool_result.`;
-      }
-    }
-    return {
-      output: `Deletion would break conversation integrity: ${integrity.error}${suggestion}`,
-      isError: true,
-    };
-  }
-
-  // Perform the deletion — splice from highest index to lowest
   const sortedIndices = Array.from(indicesToRemove).sort((a, b) => b - a);
   for (const idx of sortedIndices) {
     conv.messages.splice(idx, 1);
@@ -438,16 +372,13 @@ function actionDelete(
   onContextModified();
 
   const count = end - start + 1;
+  const snapNote = snapped
+    ? ` (adjusted from ${input.start}–${input.end} to preserve tool_use/tool_result pairs)`
+    : "";
   return {
-    output: `Deleted turns ${start}–${end} (${count} turn${count !== 1 ? "s" : ""}). Estimated savings: ~${fmt(removedTokens)} tokens.`,
+    output: `Deleted turns ${start}–${end} (${count} turn${count !== 1 ? "s" : ""})${snapNote}. Estimated savings: ~${fmt(removedTokens)} tokens.`,
     isError: false,
   };
-}
-
-/** Check if an assistant message contains tool_use blocks. */
-function hasToolUse(msg: StoredMessage): boolean {
-  if (!Array.isArray(msg.content)) return false;
-  return msg.content.some((b: ApiContentBlock) => b.type === "tool_use");
 }
 
 // ── Action: summarize ─────────────────────────────────────────────
@@ -460,7 +391,7 @@ async function actionSummarize(
   const { conv, onContextModified, summarizer, protectedTailCount } = env;
   const turnMap = buildTurnMap(conv.messages);
 
-  const { start, end, error } = validateRange(input, turnMap, protectedTailCount);
+  const { start, end, snapped, error } = validateRange(input, turnMap, conv.messages, protectedTailCount);
   if (error) return { output: error, isError: true };
 
   // Compute original size
@@ -527,6 +458,20 @@ async function actionSummarize(
 
   const extractedText = textParts.join("\n\n");
 
+  // Guard: don't summarize ranges that are already compact.
+  // A summary always has overhead (framing, prose), so below a threshold
+  // the output is guaranteed to be bigger than the input.
+  const MIN_SUMMARIZE_TOKENS = 500;
+  if (originalTokens < MIN_SUMMARIZE_TOKENS) {
+    return {
+      output: `Range ${start}–${end} is only ~${fmt(originalTokens)} tokens — too small to benefit from summarization (minimum: ${fmt(MIN_SUMMARIZE_TOKENS)}). Consider 'delete' instead.`,
+      isError: true,
+    };
+  }
+
+  // Cap output tokens to half the input so the summary is always a net win.
+  const maxTokens = Math.min(4096, Math.max(256, Math.round(originalTokens / 2)));
+
   // LLM call
   let systemPrompt = `You are a conversation summarizer. You receive a portion of a conversation
 between a user and an AI assistant (including tool calls and results).
@@ -536,6 +481,7 @@ Produce a concise summary that preserves:
 - What tools were used and their significant outputs
 - Any errors encountered and how they were resolved
 Omit redundant tool outputs (e.g., full file contents that were only read for reference).
+Your output MUST be shorter than the input — aim for at most ${fmt(maxTokens)} tokens.
 Output plain text, not markdown.`;
 
   const customPrompt = input.prompt as string | undefined;
@@ -547,7 +493,7 @@ Output plain text, not markdown.`;
   try {
     const result = await complete(systemPrompt, extractedText, {
       model: "sonnet",
-      maxTokens: 4096,
+      maxTokens,
       signal,
     });
     summaryText = result.text;
@@ -568,21 +514,6 @@ Output plain text, not markdown.`;
     { role: "assistant" as const, content: summaryText, metadata: null },
   ];
 
-  // Validate tool_use/tool_result pairing after replacement
-  const simulated = [
-    ...conv.messages.slice(0, insertIdx),
-    ...replacement,
-    ...conv.messages.slice(afterStart),
-  ];
-
-  const integrity = validateConversationIntegrity(simulated);
-  if (!integrity.valid) {
-    return {
-      output: `Summarization would break conversation integrity: ${integrity.error}`,
-      isError: true,
-    };
-  }
-
   // Perform the replacement
   const removeCount = afterStart - insertIdx;
   conv.messages.splice(insertIdx, removeCount, ...replacement);
@@ -590,8 +521,11 @@ Output plain text, not markdown.`;
   onContextModified();
 
   const summaryTokens = Math.round(summaryText.length / 4);
+  const snapNote = snapped
+    ? ` (adjusted from ${input.start}–${input.end} to preserve tool_use/tool_result pairs)`
+    : "";
   return {
-    output: `Summarized turns ${start}–${end} into 2 turns. Original: ~${fmt(originalTokens)} tokens → Summary: ~${fmt(summaryTokens)} tokens.`,
+    output: `Summarized turns ${start}–${end}${snapNote} into 2 turns. Original: ~${fmt(originalTokens)} tokens → Summary: ~${fmt(summaryTokens)} tokens.`,
     isError: false,
   };
 }
@@ -605,7 +539,7 @@ function actionStripThinking(
   const { conv, onContextModified, protectedTailCount } = env;
   const turnMap = buildTurnMap(conv.messages);
 
-  const { start, end, error } = validateRange(input, turnMap, protectedTailCount);
+  const { start, end, error } = validateRange(input, turnMap, conv.messages, protectedTailCount);
   if (error) return { output: error, isError: true };
 
   let strippedCount = 0;
@@ -668,6 +602,68 @@ function actionStripThinking(
   return { output: parts.join("\n"), isError: false };
 }
 
+// ── Action: strip_results ────────────────────────────────────────
+
+const STRIPPED_PLACEHOLDER = "[Output removed by context tool]";
+
+function actionStripResults(
+  input: Record<string, unknown>,
+  env: ContextToolEnv,
+): ToolResult {
+  const { conv, onContextModified, protectedTailCount } = env;
+  const turnMap = buildTurnMap(conv.messages);
+
+  const { start, end, error } = validateRange(input, turnMap, conv.messages, protectedTailCount);
+  if (error) return { output: error, isError: true };
+
+  let strippedCount = 0;
+  let removedChars = 0;
+
+  for (let t = start; t <= end; t++) {
+    const msg = conv.messages[turnMap[t]];
+    if (msg.role !== "user") continue;
+    if (!Array.isArray(msg.content)) continue;
+
+    // Iterate blocks directly — don't gate on turnType() because mixed
+    // messages (tool_results + pressure hint text) classify as "user".
+    for (let i = 0; i < msg.content.length; i++) {
+      const b = msg.content[i] as ApiContentBlock;
+      if (b.type !== "tool_result") continue;
+
+      const oldLen = typeof b.content === "string"
+        ? b.content.length
+        : JSON.stringify(b.content).length;
+
+      // Already stripped — skip
+      if (b.content === STRIPPED_PLACEHOLDER) continue;
+
+      const saved = oldLen - STRIPPED_PLACEHOLDER.length;
+      if (saved <= 0) continue;
+
+      removedChars += saved;
+      (b as { content: string }).content = STRIPPED_PLACEHOLDER;
+      strippedCount++;
+    }
+  }
+
+  if (strippedCount === 0) {
+    return { output: "No tool results to strip in the specified range.", isError: false };
+  }
+
+  onContextModified();
+
+  const totalChars = turnMap.reduce((sum, i) => sum + messageChars(conv.messages[i]), 0) + removedChars;
+  const lastCtx = conv.lastContextTokens ?? null;
+  const removedTokens = lastCtx && totalChars > 0
+    ? Math.round((removedChars / totalChars) * lastCtx)
+    : Math.round(removedChars / 4);
+
+  return {
+    output: `Stripped ${strippedCount} tool result${strippedCount !== 1 ? "s" : ""}. Removed ~${fmt(removedChars)} chars (~${fmt(removedTokens)} estimated tokens).`,
+    isError: false,
+  };
+}
+
 // ── Public API ────────────────────────────────────────────────────
 
 /** Execute the context tool with conversation access. */
@@ -687,30 +683,32 @@ export async function executeContext(
       return actionSummarize(input, env, signal);
     case "strip_thinking":
       return actionStripThinking(input, env);
+    case "strip_results":
+      return actionStripResults(input, env);
     default:
-      return { output: `Unknown action: '${action}'. Valid actions: list, delete, summarize, strip_thinking.`, isError: true };
+      return { output: `Unknown action: '${action}'. Valid actions: list, delete, summarize, strip_thinking, strip_results.`, isError: true };
   }
 }
 
 /** Static tool definition — registered in TOOLS array. execute() is a stub. */
 export const context: Tool = {
   name: "context",
-  description: "Inspect and manage the conversation context. Actions: 'list' shows all turns with token estimates; 'delete' removes a contiguous range of turns; 'summarize' replaces a range with an LLM-generated summary; 'strip_thinking' removes thinking blocks from old assistant turns to save context.",
+  description: "Inspect and manage the conversation context. Actions: 'list' shows all turns with token estimates; 'delete' removes a contiguous range of turns; 'summarize' replaces a range with an LLM-generated summary; 'strip_thinking' removes thinking blocks from old assistant turns; 'strip_results' replaces tool result contents with a placeholder.",
   inputSchema: {
     type: "object",
     properties: {
       action: {
         type: "string",
-        enum: ["list", "delete", "summarize", "strip_thinking"],
+        enum: ["list", "delete", "summarize", "strip_thinking", "strip_results"],
         description: "Action to perform on the conversation context.",
       },
       start: {
         type: "number",
-        description: "Start turn index (inclusive). Required for delete, summarize, strip_thinking.",
+        description: "Start turn index (inclusive). Required for delete, summarize, strip_thinking, strip_results.",
       },
       end: {
         type: "number",
-        description: "End turn index (inclusive). Required for delete, summarize, strip_thinking.",
+        description: "End turn index (inclusive). Required for delete, summarize, strip_thinking, strip_results.",
       },
       prompt: {
         type: "string",
@@ -719,10 +717,10 @@ export const context: Tool = {
     },
     required: ["action"],
   },
-  systemHint: "When approaching the context limit, use the context tool to free space: strip_thinking first (cheap, high impact), then summarize or delete old turns.",
+  systemHint: "When approaching the context limit, use the context tool to free space. Start by listing the context, then apply these strategies in order: 1) strip_thinking from older turns (lossless), 2) strip_results where findings are already captured in responses (near-lossless), 3) delete dead ends and meta-conversation, 4) summarize only as a last resort for the oldest turns unlikely to be needed verbatim.",
   display: {
     label: "Context",
-    color: "#e2b35e",  // warm gold
+    color: "#2ec4b6",
   },
   summarize(input) {
     const action = (input.action as string) ?? "?";

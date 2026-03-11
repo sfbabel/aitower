@@ -71,6 +71,21 @@ export function displayName(conv: Conversation): string {
   return conv.title || extractPreview(conv.messages) || "(empty)";
 }
 
+/**
+ * True if a message's content is exclusively tool_result blocks.
+ *
+ * Used to distinguish "real" user messages from the tool_result
+ * containers the API requires between tool_use and the next
+ * assistant turn.  Note: display.ts intentionally uses `some()`
+ * instead — it needs to extract tool_result blocks from mixed
+ * messages (those containing context pressure hints alongside
+ * tool results).
+ */
+export function isToolResultOnly(msg: StoredMessage): boolean {
+  if (typeof msg.content === "string") return false;
+  return msg.content.length > 0 && msg.content.every(b => b.type === "tool_result");
+}
+
 export function createConversation(id: string, model: ModelId, sortOrder?: number): Conversation {
   const now = Date.now();
   return {
