@@ -101,9 +101,6 @@ function handleSubmit(): void {
         daemon.renameConversation(state.convId, cmdResult.title);
       }
       if (cmdResult.type === "generate_title" && state.convId) {
-        // Immediately persist "(pending)" placeholder
-        daemon.renameConversation(state.convId, "(pending)");
-
         // Extract first user message for context
         const firstUser = state.messages.find(m => m.role === "user");
         const prompt = firstUser && "text" in firstUser ? firstUser.text.slice(0, 500) : "";
