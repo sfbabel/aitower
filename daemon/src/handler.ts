@@ -250,6 +250,7 @@ export function createHandler(server: DaemonServer) {
             model: data.model,
             startedAt: convStore.getStreamingStartedAt(data.convId) ?? Date.now(),
             blocks: convStore.getStreamingBlocks(data.convId) ?? [],
+            tokens: convStore.getStreamingTokens(data.convId),
           });
         }
         // Clear unread when a client views the conversation

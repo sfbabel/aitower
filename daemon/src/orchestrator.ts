@@ -170,6 +170,7 @@ export async function orchestrateSendMessage(
       });
     },
     onTokensUpdate(tokens) {
+      convStore.setStreamingTokens(convId, tokens);
       server.sendToSubscribers(convId, { type: "tokens_update", convId, tokens });
     },
     onContextUpdate(contextTokens) {

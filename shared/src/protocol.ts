@@ -190,6 +190,8 @@ export interface StreamingStartedEvent {
   startedAt: number;
   /** Accumulated blocks so far — included for late-joining clients. */
   blocks?: Block[];
+  /** Accumulated output tokens so far — included for late-joining clients. */
+  tokens?: number;
 }
 
 export interface StreamingStoppedEvent {
