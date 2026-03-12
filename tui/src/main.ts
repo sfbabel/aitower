@@ -118,7 +118,7 @@ function handleSubmit(): void {
     // Show queue prompt overlay — let user choose when to send
     state.queuePrompt = {
       text: messageText,
-      selection: "next-turn",
+      selection: "message-end",
     };
     scheduleRender();
     return;

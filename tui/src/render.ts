@@ -450,8 +450,8 @@ function renderQueuePromptOverlay(
   // Box content lines
   const titleLine = "Queue message:";
   const msgLine = `"${previewLabel}"`;
-  const optLine1 = `${qp.selection === "next-turn" ? "▸ " : "  "}next turn`;
-  const optLine2 = `${qp.selection === "message-end" ? "▸ " : "  "}message end`;
+  const optLine1 = `${qp.selection === "message-end" ? "▸ " : "  "}message end`;
+  const optLine2 = `${qp.selection === "next-turn" ? "▸ " : "  "}next turn`;
   const contentLines = [titleLine, msgLine, "", optLine1, optLine2];
   const innerWidth = Math.min(
     Math.max(...contentLines.map(l => l.length)) + 4,
@@ -481,8 +481,8 @@ function renderQueuePromptOverlay(
 
     if (i === 3 || i === 4) {
       // Options
-      const isSelected = (i === 3 && qp.selection === "next-turn") ||
-                         (i === 4 && qp.selection === "message-end");
+      const isSelected = (i === 3 && qp.selection === "message-end") ||
+                         (i === 4 && qp.selection === "next-turn");
       if (isSelected) {
         bg = theme.sidebarSelBg;
         fg = theme.accent;
