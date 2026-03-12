@@ -115,8 +115,22 @@ export function cancelQueuePrompt(state: RenderState): void {
 // ── Drain (local shadow cleanup) ──────────────────────────────────
 
 /**
- * Remove local shadow entries for a conversation.
- * Called when streaming_stopped arrives — the daemon already drained.
+ * Remove a single local shadow whose convId and text match.
+ * Called when the daemon consumes a queued message (user_message event)
+ * or when the user manually unqueues one (edit_message_confirm).
+ */
+export function removeLocalQueueEntry(state: RenderState, convId: string, text: string): void {
+  const idx = state.queuedMessages.findIndex(
+    qm => qm.convId === convId && qm.text === text,
+  );
+  if (idx !== -1) state.queuedMessages.splice(idx, 1);
+}
+
+/**
+ * Remove all local shadow entries for a conversation.
+ * Called on conversation switch/delete — NOT on streaming_stopped,
+ * since the daemon drains queued messages one at a time (each
+ * removal is handled individually by the user_message event handler).
  */
 export function clearLocalQueue(state: RenderState, convId: string): void {
   state.queuedMessages = state.queuedMessages.filter(qm => qm.convId !== convId);

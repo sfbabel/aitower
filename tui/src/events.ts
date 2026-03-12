@@ -11,7 +11,7 @@ import { ensureCurrentBlock, createPendingAI, sortConversations } from "./messag
 import type { AIMessage, SystemMessage, ImageAttachment } from "./messages";
 import { updateConversationList, updateConversation, syncSelectedIndex } from "./sidebar";
 import { theme } from "./theme";
-import { clearLocalQueue } from "./queue";
+import { clearLocalQueue, removeLocalQueueEntry } from "./queue";
 import type { Event } from "./protocol";
 
 // ── Daemon actions interface ────────────────────────────────────────
@@ -342,10 +342,7 @@ export function handleEvent(
       state.messages.push({ role: "user", text: event.text, images: event.images, metadata: null });
 
       // Remove matching local shadow — the daemon already injected it
-      const idx = state.queuedMessages.findIndex(
-        qm => qm.convId === event.convId && qm.text === event.text,
-      );
-      if (idx !== -1) state.queuedMessages.splice(idx, 1);
+      removeLocalQueueEntry(state, event.convId, event.text);
 
       state.scrollOffset = 0;
       break;
