@@ -19,7 +19,7 @@ import { enter_alt, leave_alt, hide_cursor, show_cursor, enable_bracketed_paste,
 import { createInitialState, isStreaming, clearPendingAI } from "./state";
 import { createPendingAI, type ImageAttachment } from "./messages";
 import { handleEvent } from "./events";
-import { confirmQueueMessage, cancelQueuePrompt, clearLocalQueue } from "./queue";
+import { confirmQueueMessage, cancelQueuePrompt, clearLocalQueue, removeLocalQueueEntry } from "./queue";
 import { confirmEditMessage, cancelEditMessage } from "./editmessage";
 import { generateTitle } from "./titlegen";
 import { theme } from "./theme";
@@ -67,13 +67,10 @@ function onDaemonEvent(event: Event): void {
   // Clear stream tick on streaming_stopped
   if (event.type === "streaming_stopped") {
     if (streamTickTimer) { clearTimeout(streamTickTimer); streamTickTimer = null; }
-
-    // Clear local queue shadow — the daemon handles draining and re-sending.
-    // The daemon's orchestrator drains message-end messages after streaming_stopped
-    // and kicks off a new send cycle automatically.
-    if (event.convId) {
-      clearLocalQueue(state, event.convId);
-    }
+    // Queue shadows are NOT cleared here — the daemon drains one queued
+    // message at a time and re-queues the rest. Each consumed message
+    // triggers a user_message event, whose handler in events.ts removes
+    // the corresponding shadow individually.
   }
 
   scheduleRender();
@@ -178,12 +175,10 @@ function handleKey(key: KeyEvent): void {
     case "edit_message_confirm": {
       const er = confirmEditMessage(state);
       if (er.action === "edit_queued") {
-        // Remove from local shadow by text match + tell daemon
-        const idx = state.queuedMessages.findIndex(
-          qm => qm.convId === state.convId && qm.text === er.text,
-        );
-        if (idx !== -1) state.queuedMessages.splice(idx, 1);
-        if (state.convId) daemon.unqueueMessage(state.convId, er.text);
+        if (state.convId) {
+          removeLocalQueueEntry(state, state.convId, er.text);
+          daemon.unqueueMessage(state.convId, er.text);
+        }
       } else if (er.action === "edit_sent" && state.convId) {
         // The daemon's unwindTo handles abort internally if streaming,
         // waits for the stream to stop, then truncates.
