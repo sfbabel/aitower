@@ -2,19 +2,21 @@
  * File logger for exocortexd.
  *
  * Writes to ~/.config/exocortex/exocortex.log with automatic rotation at 5 MB.
+ * Keeps up to 3 rotated files (.log.1, .log.2, .log.3) for ~20 MB total history.
  * Log entries are buffered and flushed asynchronously via microtask to avoid
  * blocking the event loop with synchronous I/O on every call. Rotation is
  * checked at flush time rather than per-entry. A synchronous flush runs on
  * process exit to avoid losing final messages.
  */
 
-import { appendFileSync, appendFile as appendFileCb, mkdirSync, existsSync, statSync, renameSync } from "fs";
+import { appendFileSync, appendFile as appendFileCb, mkdirSync, existsSync, statSync, renameSync, unlinkSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
 const LOG_DIR = join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "exocortex");
 const LOG_FILE = join(LOG_DIR, "exocortex.log");
 const MAX_LOG_BYTES = 5 * 1024 * 1024;
+const MAX_LOG_FILES = 3;
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -41,7 +43,14 @@ function rotateIfNeeded(): void {
   try {
     const stat = statSync(LOG_FILE);
     if (stat.size >= MAX_LOG_BYTES) {
-      try { renameSync(LOG_FILE, LOG_FILE + ".1"); } catch { /* best-effort rotation */ }
+      try {
+        // Rotate: .2→.3, .1→.2, .log→.1 (drop the oldest)
+        try { unlinkSync(`${LOG_FILE}.${MAX_LOG_FILES}`); } catch { /* best-effort */ }
+        for (let i = MAX_LOG_FILES - 1; i >= 1; i--) {
+          try { renameSync(`${LOG_FILE}.${i}`, `${LOG_FILE}.${i + 1}`); } catch { /* best-effort */ }
+        }
+        renameSync(LOG_FILE, `${LOG_FILE}.1`);
+      } catch { /* best-effort rotation */ }
     }
   } catch { /* file doesn't exist yet — nothing to rotate */ }
 }
