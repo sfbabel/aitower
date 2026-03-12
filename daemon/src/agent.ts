@@ -135,10 +135,14 @@ export async function runAgentLoop(
 
   // Context pressure thresholds — injected as text blocks in tool result messages
   // TODO: REVERT — testing context hint rendering
+  // Staggered so each level fires on successive rounds:
+  //   Round 1 (~2-3k tokens) → advisory
+  //   Round 2 (~4-5k tokens) → warning
+  //   Round 3 (~6k+ tokens)  → critical (repeats every round)
   const THRESHOLDS = [
     { at: 1, level: "advisory" as const },
-    { at: 1, level: "warning" as const },
-    { at: 1, level: "critical" as const },
+    { at: 4_000, level: "warning" as const },
+    { at: 6_000, level: "critical" as const },
   ];
   let highestFiredLevel = -1; // index into THRESHOLDS, -1 = none fired
 
@@ -305,6 +309,10 @@ export async function runAgentLoop(
 
       if (hint) {
         toolResultContent.push({ type: "text", text: hint } as ApiContentBlock);
+        // Emit as streaming events so the TUI renders the hint live
+        // (without this, hints only appear on conversation reload).
+        callbacks.onBlockStart("text");
+        callbacks.onTextChunk(hint);
         log("info", `agent: injected context pressure hint (${THRESHOLDS[Math.max(0, highestFiredLevel)].level}, ${usage})`);
       }
     }
