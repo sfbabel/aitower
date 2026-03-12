@@ -309,6 +309,10 @@ export async function runAgentLoop(
 
       if (hint) {
         toolResultContent.push({ type: "text", text: hint } as ApiContentBlock);
+        // Include in allBlocks so message_complete carries the hint
+        // (without this, the TUI replaces streaming blocks on completion
+        // and the hint vanishes).
+        allBlocks.push({ type: "text", text: hint });
         // Emit as streaming events so the TUI renders the hint live
         // (without this, hints only appear on conversation reload).
         callbacks.onBlockStart("text");
