@@ -84,7 +84,8 @@ export function displayName(conv: Conversation): string {
  * into the AI entry.  Without this consistency, unwindTo's
  * user-message index drifts from the TUI's index and the
  * splice can land between a tool_use and its tool_result,
- * bricking the conversation.
+ * bricking the conversation.  Also used by the context tool's
+ * snapRange to keep tool_use/tool_result pairs atomic.
  */
 export function isToolResultMessage(msg: StoredMessage): boolean {
   if (typeof msg.content === "string") return false;

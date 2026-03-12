@@ -87,7 +87,15 @@ function oneLine(s: string, maxLen = 60): string {
   return clean.slice(0, maxLen) + "…";
 }
 
-/** Classify a non-system turn as "user", "assistant", or "tool_result". */
+/**
+ * Classify a non-system turn as "user", "assistant", or "tool_result".
+ *
+ * Uses `isToolResultMessage()` (some) so that mixed messages — tool_result
+ * blocks alongside context pressure hint text blocks — are correctly
+ * recognised as tool_result turns.  Without this, snapRange fails to
+ * protect tool_use/tool_result pairs when the tool_result message
+ * contains an injected hint.
+ */
 function turnType(msg: StoredMessage): "user" | "assistant" | "tool_result" {
   if (msg.role === "assistant") return "assistant";
   if (isToolResultMessage(msg)) return "tool_result";
@@ -624,8 +632,8 @@ function actionStripResults(
     if (msg.role !== "user") continue;
     if (!Array.isArray(msg.content)) continue;
 
-    // Iterate blocks directly — don't gate on turnType() because mixed
-    // messages (tool_results + pressure hint text) classify as "user".
+    // Iterate blocks directly (by role, not turnType) so we process both
+    // pure tool_result messages and mixed ones with pressure hint text.
     for (let i = 0; i < msg.content.length; i++) {
       const b = msg.content[i] as ApiContentBlock;
       if (b.type !== "tool_result") continue;
