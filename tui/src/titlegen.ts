@@ -61,9 +61,7 @@ export function generateTitle(
       scheduleRender();
     },
     (error) => {
-      // Revert "(pending)" — clear the title so the sidebar falls back to preview
-      const conv = state.sidebar.conversations.find(c => c.id === convId);
-      if (conv) conv.title = null;
+      // Leave as "pending" — no preview fallback exists anymore.
       state.messages.push({ role: "system", text: `✗ Title generation failed: ${error}`, metadata: null });
       scheduleRender();
     },
