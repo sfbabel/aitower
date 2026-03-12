@@ -23,6 +23,9 @@ const MAX_TOKENS = 10200;
 /** Max characters of user message context to send for title generation. */
 const MAX_CONTEXT_CHARS = 2000;
 
+/** Placeholder title shown while generation is in-flight. */
+export const PENDING_TITLE = "pending";
+
 // ── Helpers ────────────────────────────────────────────────────────
 
 /** Collect user messages into a single string, truncated to MAX_CONTEXT_CHARS. */
