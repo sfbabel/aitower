@@ -80,19 +80,49 @@ function renderBlock(block: Block, contentWidth: number, toolRegistry: ToolDispl
     }
     case "tool_call": {
       const display = resolveToolDisplay(block.toolName, block.summary, toolRegistry);
-      // Wrap the plain text, then apply colors per line
-      const plainText = display.detail ? `${display.label} ${display.detail}` : display.label;
-      const w = wordWrap(plainText, contentWidth - 2);
-      for (let i = 0; i < w.lines.length; i++) {
-        if (i === 0) {
-          // First line: bold label + detail
-          const labelLen = display.label.length;
-          const rest = w.lines[0].slice(labelLen);
-          lines.push(`  ${display.fg}${theme.bold}${display.label}${theme.reset}${display.fg}${rest}${theme.reset}`);
-        } else {
-          lines.push(`  ${display.fg}${w.lines[i]}${theme.reset}`);
+
+      // For user-styled bash commands (display.cmd set), re-apply the
+      // bold label to subsequent lines that invoke the same command.
+      if (display.cmd && display.detail) {
+        const cmd = display.cmd;
+        const detailLines = display.detail.split("\n");
+        const displayLines = detailLines.map((line, i) => {
+          if (i === 0) return `${display.label} ${line}`;
+          const t = line.trimStart();
+          if (t === cmd || t.startsWith(cmd + " ")) {
+            const args = t.slice(cmd.length).trimStart();
+            return `${display.label} ${args}`;
+          }
+          return line;
+        });
+
+        for (const dl of displayLines) {
+          const w = wordWrap(dl, contentWidth - 2);
+          for (let j = 0; j < w.lines.length; j++) {
+            if (w.lines[j].startsWith(display.label)) {
+              const rest = w.lines[j].slice(display.label.length);
+              lines.push(`  ${display.fg}${theme.bold}${display.label}${theme.reset}${display.fg}${rest}${theme.reset}`);
+            } else {
+              lines.push(`  ${display.fg}${w.lines[j]}${theme.reset}`);
+            }
+            cont.push(w.cont[j]);
+          }
         }
-        cont.push(w.cont[i]);
+      } else {
+        // Default: wrap the plain text, apply colors per line
+        const plainText = display.detail ? `${display.label} ${display.detail}` : display.label;
+        const w = wordWrap(plainText, contentWidth - 2);
+        for (let i = 0; i < w.lines.length; i++) {
+          if (i === 0) {
+            // First line: bold label + detail
+            const labelLen = display.label.length;
+            const rest = w.lines[0].slice(labelLen);
+            lines.push(`  ${display.fg}${theme.bold}${display.label}${theme.reset}${display.fg}${rest}${theme.reset}`);
+          } else {
+            lines.push(`  ${display.fg}${w.lines[i]}${theme.reset}`);
+          }
+          cont.push(w.cont[i]);
+        }
       }
       break;
     }
