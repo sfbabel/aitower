@@ -45,6 +45,14 @@ export function getLastUsage(): UsageData | null {
   return lastUsage;
 }
 
+/** Cache, persist, broadcast, and schedule the next reset refresh. */
+function commitUsage(usage: UsageData, onUpdate: (u: UsageData) => void): void {
+  lastUsage = usage;
+  saveToDisk(usage);
+  onUpdate(usage);
+  scheduleResetRefresh(usage, onUpdate);
+}
+
 // ── Auto-refresh at reset boundaries ──────────────────────────────
 
 let resetTimer: ReturnType<typeof setTimeout> | null = null;
@@ -88,10 +96,7 @@ export function refreshUsage(onUpdate: (usage: UsageData) => void): void {
 
   fetchUsage(auth.tokens.accessToken).then((usage) => {
     if (usage) {
-      lastUsage = usage;
-      saveToDisk(usage);
-      onUpdate(usage);
-      scheduleResetRefresh(usage, onUpdate);
+      commitUsage(usage, onUpdate);
     } else {
       log("warn", "usage: fetch returned null");
     }
@@ -137,10 +142,7 @@ async function fetchUsage(accessToken: string): Promise<UsageData | null> {
 export function handleUsageHeaders(headers: Headers, onUpdate: (usage: UsageData) => void): void {
   const usage = parseHeaders(headers);
   if (usage) {
-    lastUsage = usage;
-    saveToDisk(usage);
-    onUpdate(usage);
-    scheduleResetRefresh(usage, onUpdate);
+    commitUsage(usage, onUpdate);
   }
 }
 
