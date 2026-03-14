@@ -54,7 +54,7 @@ export function collectResponse(
         case "message_complete":
           // Each agentic turn produces a message_complete with its blocks.
           blocks.push(...event.blocks);
-          tokens = event.tokens;
+          tokens += event.tokens;
           break;
 
         case "streaming_stopped":

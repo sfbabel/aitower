@@ -101,7 +101,7 @@ export class Connection {
         this.offEvent(handler);
       };
 
-      this.listeners.push(handler);
+      this.onEvent(handler);
       this.send(command);
     });
   }

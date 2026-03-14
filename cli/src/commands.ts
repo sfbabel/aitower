@@ -32,10 +32,6 @@ function nextReqId(): string {
   return `cli_${++reqCounter}_${Date.now()}`;
 }
 
-function padRight(s: string, width: number): string {
-  return s.length >= width ? s.slice(0, width) : s + " ".repeat(width - s.length);
-}
-
 function truncate(s: string, max: number): string {
   return s.length <= max ? s : s.slice(0, max - 1) + "…";
 }
@@ -84,6 +80,10 @@ export async function send(
     : undefined;
 
   const response = await collectResponse(conn, convId, text, opts.timeout, onStream);
+
+  // Unsubscribe — symmetric with the subscribe above. Not strictly required
+  // since disconnect() closes the socket, but keeps the protocol clean.
+  conn.send({ type: "unsubscribe", convId });
 
   // Format output
   if (opts.idOnly) {
@@ -135,7 +135,9 @@ export async function ls(conn: Connection, opts: OutputOptions): Promise<number>
 // ── info ────────────────────────────────────────────────────────────
 
 export async function info(conn: Connection, convId: string, opts: OutputOptions): Promise<number> {
-  // Fetch both the summary (title, pinned, marked) and the loaded conversation (context tokens)
+  // Fetch both the summary (title, pinned, marked) and the loaded conversation
+  // (context tokens). Safe to fire in parallel: request() filters by reqId so
+  // responses won't cross-match even though they share the same connection.
   const listReqId = nextReqId();
   const loadReqId = nextReqId();
 
