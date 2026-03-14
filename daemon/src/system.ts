@@ -33,7 +33,7 @@ export function buildSystemPrompt(): string {
   });
 
   const base = [
-    `You are Mnemo, the user's assistant.`,
+    `You are Exo, the user's assistant.`,
     ``,
     `Environment:`,
     `- Working directory: ${cwd}`,

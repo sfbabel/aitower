@@ -52,7 +52,7 @@ Commands flow client → daemon. Events flow daemon → client.
 cd daemon && bun install
 cd ../tui && bun install
 
-# 2. Authenticate (if not already logged in via Mnemo)
+# 2. Authenticate (if not already logged in via Exocortex)
 cd ../daemon && bun run login
 
 # 3. Start the daemon
