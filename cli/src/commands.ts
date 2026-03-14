@@ -40,6 +40,13 @@ function truncate(s: string, max: number): string {
   return s.length <= max ? s : s.slice(0, max - 1) + "…";
 }
 
+/** Auto-generate a conversation title from the first message. */
+function autoTitle(text: string): string {
+  // Take the first line, collapse whitespace, truncate
+  const firstLine = text.split("\n")[0].trim();
+  return truncate(firstLine, 80);
+}
+
 // ── send ────────────────────────────────────────────────────────────
 
 export async function send(
@@ -52,8 +59,9 @@ export async function send(
   // Create conversation if needed
   if (!convId) {
     const reqId = nextReqId();
+    const title = autoTitle(text);
     const created = await conn.request<ConversationCreatedEvent>(
-      { type: "new_conversation", reqId, model: model ?? undefined },
+      { type: "new_conversation", reqId, model: model ?? undefined, title },
       (e): e is ConversationCreatedEvent => e.type === "conversation_created" && e.reqId === reqId,
     );
     convId = created.convId;
