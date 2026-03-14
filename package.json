@@ -1,8 +1,8 @@
 {
   "name": "exocortex",
   "private": true,
-  "workspaces": ["shared", "daemon", "tui"],
+  "workspaces": ["shared", "daemon", "tui", "cli"],
   "scripts": {
-    "typecheck": "tsc --noEmit -p shared && tsc --noEmit -p daemon && tsc --noEmit -p tui"
+    "typecheck": "tsc --noEmit -p shared && tsc --noEmit -p daemon && tsc --noEmit -p tui && tsc --noEmit -p cli"
   }
 }

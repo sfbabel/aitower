@@ -3,14 +3,18 @@
 A daemon-driven AI assistant with a clean client/server architecture.
 
 ```
-┌─────────────┐         Unix Socket         ┌──────────────┐
-│             │    (JSON-lines protocol)     │              │
-│  exocortex  │◄───────────────────────────►│  exocortexd  │
-│    (TUI)    │   Commands ──►              │   (daemon)   │
-│             │          ◄── Events          │              │
-└─────────────┘                              └──────┬───────┘
-  Presentation                                      │
-  layer only                                        │  Anthropic
+┌─────────────┐                              ┌──────────────┐
+│  exocortex  │         Unix Socket          │              │
+│    (TUI)    │◄───────────────────────────►│              │
+│  for humans │   Commands ──►              │  exocortexd  │
+└─────────────┘          ◄── Events          │   (daemon)   │
+                                             │              │
+┌─────────────┐    (JSON-lines protocol)     │              │
+│     exo     │◄───────────────────────────►│              │
+│    (CLI)    │   Stateless req/response     │              │
+│   for AIs   │                              └──────┬───────┘
+└─────────────┘                                     │
+                                                    │  Anthropic
                                                     │  Messages API
                                                     ▼
                                               ┌──────────┐
@@ -20,7 +24,7 @@ A daemon-driven AI assistant with a clean client/server architecture.
 
 ## Architecture
 
-**Three packages** in a Bun workspace:
+**Four packages** in a Bun workspace:
 
 - **`shared/`** — The protocol contract. Type definitions for commands,
   events, messages, and blocks. The single source of truth for the wire
@@ -33,6 +37,10 @@ A daemon-driven AI assistant with a clean client/server architecture.
 - **`tui/`** — The frontend. A terminal UI that connects to the daemon and
   renders the conversation. Pure presentation — no AI logic. Features vim
   keybindings, a conversations sidebar, visual mode, and autocomplete.
+
+- **`cli/`** — A stateless CLI client for scripting and AI-to-AI interaction.
+  Each invocation connects, sends a command, waits for the response, and
+  disconnects. Conversation IDs are the state handles.
 
 The protocol between them is newline-delimited JSON over a Unix domain socket.
 Commands flow client → daemon. Events flow daemon → client.
@@ -132,6 +140,14 @@ daemon/
         ├── glob.ts        File pattern matching
         ├── grep.ts        Content search (ripgrep)
         └── browse.ts      URL fetching
+
+cli/
+└── src/
+    ├── main.ts            Entry point (arg parsing + dispatch)
+    ├── conn.ts            Promise-based Unix socket client
+    ├── collect.ts         Event collector (subscribe + wait for streaming_stopped)
+    ├── format.ts          Output formatting (text, JSON, stream)
+    └── commands.ts        All subcommands (send, ls, info, history, rm, etc.)
 
 tui/
 └── src/
