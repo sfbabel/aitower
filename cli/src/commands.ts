@@ -84,7 +84,8 @@ export async function send(
 
   // Unsubscribe — symmetric with the subscribe above. Not strictly required
   // since disconnect() closes the socket, but keeps the protocol clean.
-  conn.send({ type: "unsubscribe", convId });
+  // Wrapped in try/catch because the socket may have closed during a long response.
+  try { conn.send({ type: "unsubscribe", convId }); } catch {};
 
   // Format output
   if (opts.idOnly) {

@@ -100,7 +100,7 @@ exo status --json
 
 ## Auto-titling
 
-Conversations created via the CLI are automatically titled with a `cli:` prefix followed by the first line of the message (truncated to 80 chars). This makes it easy to distinguish CLI-spawned conversations from human-created ones in `exo ls` and the TUI sidebar.
+Conversations created via the CLI are automatically titled with a `cli:` prefix followed by the first line of the message (truncated to 80 chars total). This makes it easy to distinguish CLI-spawned conversations from human-created ones in `exo ls` and the TUI sidebar.
 
 ## Exit codes
 
