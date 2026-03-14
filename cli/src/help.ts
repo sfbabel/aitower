@@ -28,7 +28,9 @@ ${b("COMMANDS")}
   help                              Show this help
 
 ${b("FLAGS")}
-  --opus, --sonnet, --haiku         Model selection
+  --opus, --sonnet, --haiku         Model selection (default: opus)
+                                    opus for complex/quality-critical tasks,
+                                    sonnet for routine code, haiku for lookups
   -c, --conv <id>                   Conversation ID
   --json                            Structured JSON output
   --full                            Include thinking + tool results
@@ -55,7 +57,7 @@ ${b("USAGE")}
 
 ${b("FLAGS")}
   -c, --conv <id>                   Continue this conversation
-  --opus, --sonnet, --haiku         Model selection
+  --opus, --sonnet, --haiku         Model selection (default: opus)
   --json                            Output as JSON (blocks, tokens, duration)
   --full                            Include thinking blocks and tool results
   --stream                          Stream events as NDJSON as they arrive
@@ -164,7 +166,7 @@ ${b("USAGE")}
 
 ${b("FLAGS")}
   --system <prompt>                 System prompt (default: "You are a helpful assistant.")
-  --opus, --sonnet, --haiku         Model selection
+  --opus, --sonnet, --haiku         Model selection (default: haiku)
   --json                            Output as JSON object
   --timeout <sec>                   Max wait time (default 300)
 `,
