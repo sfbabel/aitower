@@ -45,6 +45,14 @@ export function getLastUsage(): UsageData | null {
   return lastUsage;
 }
 
+/** Cache, persist, broadcast, and schedule the next reset refresh. */
+function commitUsage(usage: UsageData, onUpdate: (u: UsageData) => void): void {
+  lastUsage = usage;
+  saveToDisk(usage);
+  onUpdate(usage);
+  scheduleResetRefresh(usage, onUpdate);
+}
+
 // ── Auto-refresh at reset boundaries ──────────────────────────────
 
 let resetTimer: ReturnType<typeof setTimeout> | null = null;
@@ -88,10 +96,7 @@ export function refreshUsage(onUpdate: (usage: UsageData) => void): void {
 
   fetchUsage(auth.tokens.accessToken).then((usage) => {
     if (usage) {
-      lastUsage = usage;
-      saveToDisk(usage);
-      onUpdate(usage);
-      scheduleResetRefresh(usage, onUpdate);
+      commitUsage(usage, onUpdate);
     } else {
       log("warn", "usage: fetch returned null");
     }
@@ -137,10 +142,7 @@ async function fetchUsage(accessToken: string): Promise<UsageData | null> {
 export function handleUsageHeaders(headers: Headers, onUpdate: (usage: UsageData) => void): void {
   const usage = parseHeaders(headers);
   if (usage) {
-    lastUsage = usage;
-    saveToDisk(usage);
-    onUpdate(usage);
-    scheduleResetRefresh(usage, onUpdate);
+    commitUsage(usage, onUpdate);
   }
 }
 
@@ -170,18 +172,18 @@ function parseHeaders(headers: Headers): UsageData | null {
 function parseUsageResponse(data: unknown): UsageData {
   const obj = data as Record<string, unknown> | null | undefined;
   return {
-    fiveHour: parseWindow(obj?.five_hour),
-    sevenDay: parseWindow(obj?.seven_day),
+    fiveHour: parseWindow(obj?.five_hour, lastUsage?.fiveHour),
+    sevenDay: parseWindow(obj?.seven_day, lastUsage?.sevenDay),
   };
 }
 
-function parseWindow(w: unknown): UsageWindow | null {
+function parseWindow(w: unknown, prev?: UsageWindow | null): UsageWindow | null {
   if (!w || typeof w !== "object") return null;
   const obj = w as Record<string, unknown>;
   if (typeof obj.utilization !== "number") return null;
   return {
     utilization: obj.utilization,
-    resetsAt: parseResetValue(obj.resets_at),
+    resetsAt: parseResetValue(obj.resets_at) ?? prev?.resetsAt ?? null,
   };
 }
 

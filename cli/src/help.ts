@@ -17,18 +17,20 @@ ${b("USAGE")}
   cat file | exo -                  Read message from stdin
 
 ${b("COMMANDS")}
-  ls                                List conversations
-  info <id>                         Conversation metadata
-  history <id>                      Conversation history
-  rm <id>                           Delete a conversation
-  abort <id>                        Abort in-flight stream
-  rename <id> <title>               Rename a conversation
+  ls (list)                         List conversations
+  info (show) <id>                  Conversation metadata
+  history (log) <id>                Conversation history
+  rm (delete, del) <id>             Delete a conversation
+  abort (kill, cancel) <id>         Abort in-flight stream
+  rename (mv, title) <id> <title>   Rename a conversation
   llm "text" --system "prompt"      One-shot LLM (no conversation)
-  status                            Check if daemon is running
+  status (ping)                     Check if daemon is running
   help                              Show this help
 
 ${b("FLAGS")}
-  --opus, --sonnet, --haiku         Model selection
+  --opus, --sonnet, --haiku         Model selection (default: opus)
+                                    opus for complex/quality-critical tasks,
+                                    sonnet for routine code, haiku for lookups
   -c, --conv <id>                   Conversation ID
   --json                            Structured JSON output
   --full                            Include thinking + tool results
@@ -55,7 +57,7 @@ ${b("USAGE")}
 
 ${b("FLAGS")}
   -c, --conv <id>                   Continue this conversation
-  --opus, --sonnet, --haiku         Model selection
+  --opus, --sonnet, --haiku         Model selection (default: opus)
   --json                            Output as JSON (blocks, tokens, duration)
   --full                            Include thinking blocks and tool results
   --stream                          Stream events as NDJSON as they arrive
@@ -164,14 +166,39 @@ ${b("USAGE")}
 
 ${b("FLAGS")}
   --system <prompt>                 System prompt (default: "You are a helpful assistant.")
-  --opus, --sonnet, --haiku         Model selection
+  --opus, --sonnet, --haiku         Model selection (default: haiku)
   --json                            Output as JSON object
   --timeout <sec>                   Max wait time (default 300)
 `,
 };
 
+// Resolve aliases for help lookups
+const HELP_ALIASES: Record<string, string> = {
+  list: "ls",
+  delete: "rm",
+  remove: "rm",
+  del: "rm",
+  kill: "abort",
+  cancel: "abort",
+  mv: "rename",
+  title: "rename",
+  ping: "status",
+  health: "status",
+  log: "history",
+  show: "info",
+  send: "send",
+  chat: "send",
+  ask: "send",
+  one: "llm",
+};
+
+function resolveHelp(command: string): string {
+  return HELP_ALIASES[command] ?? command;
+}
+
 export function printCommandHelp(command: string): void {
-  const help = COMMAND_HELP[command];
+  const resolved = resolveHelp(command);
+  const help = COMMAND_HELP[resolved];
   if (help) {
     process.stdout.write(help);
   } else {
@@ -180,5 +207,6 @@ export function printCommandHelp(command: string): void {
 }
 
 export function hasCommandHelp(command: string): boolean {
-  return command in COMMAND_HELP;
+  const resolved = resolveHelp(command);
+  return resolved in COMMAND_HELP;
 }
