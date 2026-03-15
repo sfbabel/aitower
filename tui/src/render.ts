@@ -368,7 +368,9 @@ export function render(state: RenderState): void {
 
     const isFirst = i === 0 && !isNewLine[i];
     const modeChar = (state.vim.mode === "visual" || state.vim.mode === "visual-line") ? "V"
-      : state.vim.mode === "normal" ? "N" : "I";
+      : state.vim.mode === "normal"
+        ? (state.vim.pendingReplace ? "r" : "N")
+        : "I";
     const modeColor = (state.vim.mode === "visual" || state.vim.mode === "visual-line")
       ? theme.vimVisual
       : state.vim.mode === "normal" ? theme.vimNormal : theme.vimInsert;

@@ -36,6 +36,8 @@ export interface VimState {
   pendingFind: "f" | "F" | null;
   /** Last f/F find — used by ; and , to repeat. */
   lastFind: { char: string; direction: "f" | "F" } | null;
+  /** Waiting for a character after r (replace). */
+  pendingReplace: boolean;
 }
 
 export function createVimState(): VimState {
@@ -49,6 +51,7 @@ export function createVimState(): VimState {
     visualAnchor: 0,
     pendingFind: null,
     lastFind: null,
+    pendingReplace: false,
   };
 }
 
@@ -60,6 +63,7 @@ export function resetPending(vim: VimState): void {
   vim.pendingKeys = "";
   vim.count = null;
   vim.pendingFind = null;
+  vim.pendingReplace = false;
   // lastFind is intentionally NOT cleared — ; and , need it across commands
 }
 
