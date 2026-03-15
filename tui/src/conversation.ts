@@ -51,6 +51,60 @@ export function wordWrap(text: string, width: number): WrapResult {
   return { lines, cont };
 }
 
+// ── Block render cache ──────────────────────────────────────────────
+// Markdown rendering (syntax highlighting, table box-drawing, inline
+// formatting, word wrapping) is the most expensive per-frame work.
+// Cache rendered output per block object — WeakMap ensures entries are
+// GC'd when messages leave the conversation.
+
+interface BlockCacheEntry {
+  /** Length of source text at render time (detects streaming growth). */
+  contentLen: number;
+  /** Terminal content width used for wrapping. */
+  width: number;
+  /** Whether tool output was shown (affects tool_result blocks). */
+  showToolOutput: boolean;
+  /** Cached render result. */
+  result: WrapResult;
+}
+
+const blockRenderCache = new WeakMap<Block, BlockCacheEntry>();
+
+/** Return the content string whose length we track for cache invalidation. */
+function blockContentKey(block: Block): number {
+  switch (block.type) {
+    case "thinking":
+    case "text":
+      return block.text.length;
+    case "tool_call":
+      return block.summary.length;
+    case "tool_result":
+      return block.output.length;
+  }
+}
+
+function renderBlockCached(
+  block: Block,
+  contentWidth: number,
+  toolRegistry: ToolDisplayInfo[],
+  showToolOutput: boolean,
+): WrapResult {
+  const contentLen = blockContentKey(block);
+  const cached = blockRenderCache.get(block);
+  if (
+    cached &&
+    cached.contentLen === contentLen &&
+    cached.width === contentWidth &&
+    cached.showToolOutput === showToolOutput
+  ) {
+    return cached.result;
+  }
+
+  const result = renderBlock(block, contentWidth, toolRegistry, showToolOutput);
+  blockRenderCache.set(block, { contentLen, width: contentWidth, showToolOutput, result });
+  return result;
+}
+
 // ── Block rendering ─────────────────────────────────────────────────
 
 function renderBlock(block: Block, contentWidth: number, toolRegistry: ToolDisplayInfo[], showToolOutput: boolean): WrapResult {
@@ -265,7 +319,7 @@ export function buildMessageLines(
     } else if (msg.role === "assistant") {
       // AI messages: content blocks, then metadata
       for (const block of msg.blocks) {
-        pushBlock(renderBlock(block, contentWidth, state.toolRegistry, state.showToolOutput));
+        pushBlock(renderBlockCached(block, contentWidth, state.toolRegistry, state.showToolOutput));
       }
       const contentEnd = lines.length;
       for (const ml of renderMetadata(msg.metadata)) pushLine(ml);
@@ -283,7 +337,7 @@ export function buildMessageLines(
   if (state.pendingAI) {
     const start = lines.length;
     for (const block of state.pendingAI.blocks) {
-      pushBlock(renderBlock(block, contentWidth, state.toolRegistry, state.showToolOutput));
+      pushBlock(renderBlockCached(block, contentWidth, state.toolRegistry, state.showToolOutput));
     }
     const contentEnd = lines.length;
     for (const ml of renderMetadata(state.pendingAI.metadata)) pushLine(ml);
