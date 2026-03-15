@@ -11,7 +11,7 @@ import { refreshTokens, AuthError } from "./auth";
 import { injectToolBreakpoints, injectMessageBreakpoints } from "./cache";
 import { log } from "./log";
 import { ANTHROPIC_BASE_URL } from "./constants";
-import type { ModelId, ApiMessage, ApiContentBlock } from "./messages";
+import { DEFAULT_EFFORT, type ModelId, type EffortLevel, type ApiMessage, type ApiContentBlock } from "./messages";
 export type { ApiMessage, ApiContentBlock };
 
 export { AuthError };
@@ -89,6 +89,7 @@ export interface StreamOptions {
   signal?: AbortSignal;
   maxTokens?: number;
   tools?: unknown[];
+  effort?: EffortLevel;
 }
 
 /** Non-retryable SSE error types — bad request, auth, or model not found. */
@@ -138,6 +139,7 @@ function supportsAdaptive(model: ModelId): boolean {
 function buildRequest(
   accessToken: string, messages: ApiMessage[], model: ModelId,
   maxTokens: number, system?: string, tools?: unknown[],
+  effort: EffortLevel = DEFAULT_EFFORT,
 ) {
   const adaptive = supportsAdaptive(model);
   const thinking = adaptive
@@ -148,7 +150,7 @@ function buildRequest(
     model: MODEL_IDS[model], messages: injectMessageBreakpoints(messages),
     max_tokens: maxTokens, thinking, stream: true,
     metadata: { user_id: getMetadataUserId() },
-    output_config: { effort: "high" },
+    output_config: { effort },
   };
   if (tools && tools.length > 0) body.tools = injectToolBreakpoints(tools);
   if (system) {
@@ -361,13 +363,13 @@ export async function streamMessage(
   callbacks: StreamCallbacks,
   options: StreamOptions = {},
 ): Promise<StreamResult> {
-  const { system, signal, maxTokens = 32000, tools } = options;
+  const { system, signal, maxTokens = 32000, tools, effort } = options;
   let accessToken = await getAccessToken();
   let authRetried = false;
   let retryAttempt = 0;
 
   while (true) {
-    const { url, init } = buildRequest(accessToken, messages, model, maxTokens, system, tools);
+    const { url, init } = buildRequest(accessToken, messages, model, maxTokens, system, tools, effort);
     const res = await fetch(url, { ...init, signal });
 
     // Auth errors → refresh once

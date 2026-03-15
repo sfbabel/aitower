@@ -8,8 +8,8 @@
  * Commands flow client → daemon. Events flow daemon → client.
  */
 
-import type { ModelId, Block, MessageMetadata, UsageData, ConversationSummary, ToolDisplayInfo, ImageAttachment } from "./messages";
-export type { ModelId, Block, MessageMetadata, UsageData, ConversationSummary, ToolDisplayInfo, ImageAttachment };
+import type { ModelId, EffortLevel, Block, MessageMetadata, UsageData, ConversationSummary, ToolDisplayInfo, ImageAttachment } from "./messages";
+export type { ModelId, EffortLevel, Block, MessageMetadata, UsageData, ConversationSummary, ToolDisplayInfo, ImageAttachment };
 
 // ── Commands (client → daemon) ──────────────────────────────────────
 
@@ -71,6 +71,13 @@ export interface SetModelCommand {
   reqId?: string;
   convId: string;
   model: ModelId;
+}
+
+export interface SetEffortCommand {
+  type: "set_effort";
+  reqId?: string;
+  convId: string;
+  effort: EffortLevel;
 }
 
 export interface DeleteConversationCommand {
@@ -159,6 +166,7 @@ export type Command =
   | NewConversationCommand
   | SendMessageCommand
   | SetModelCommand
+  | SetEffortCommand
   | AbortCommand
   | SubscribeCommand
   | UnsubscribeCommand

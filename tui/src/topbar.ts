@@ -27,12 +27,15 @@ export function renderTopbar(state: RenderState, width?: number): string {
 
   const title = `${theme.bold} Exocortex${theme.reset}${theme.topbarBg}`;
   const modelLabel = state.model.charAt(0).toUpperCase() + state.model.slice(1);
+  const conv = state.convId ? state.sidebar.conversations.find(c => c.id === state.convId) : null;
+  const effortLabel = conv?.effort === "max" ? " ⚡MAX" : "";
   const label = convLabel(state);
   const separator = label ? " — " : "";
 
+  const rightLabel = modelLabel + effortLabel;
   const inner = `${title}${separator}${label}`;
   const visibleUsed = " Exocortex".length + separator.length + label.length;
-  const padding = Math.max(0, w - visibleUsed - modelLabel.length - 1);
+  const padding = Math.max(0, w - visibleUsed - rightLabel.length - 1);
 
-  return `${theme.topbarBg}${inner}${" ".repeat(padding)}${modelLabel} ${theme.reset}`;
+  return `${theme.topbarBg}${inner}${" ".repeat(padding)}${rightLabel} ${theme.reset}`;
 }

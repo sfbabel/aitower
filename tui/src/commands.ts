@@ -11,7 +11,7 @@
 import type { RenderState } from "./state";
 import { clearPendingAI } from "./state";
 import { clearPrompt } from "./promptline";
-import type { ModelId } from "./messages";
+import { DEFAULT_EFFORT, type ModelId, type EffortLevel } from "./messages";
 import { convDisplayName } from "./messages";
 import { copyToClipboard } from "./vim/clipboard";
 import { PENDING_TITLE } from "./titlegen";
@@ -29,6 +29,7 @@ export type CommandResult =
   | { type: "quit" }
   | { type: "new_conversation" }
   | { type: "model_changed"; model: ModelId }
+  | { type: "effort_changed"; effort: EffortLevel }
   | { type: "rename_conversation"; title: string }
   | { type: "generate_title" };
 
@@ -60,10 +61,12 @@ function formatConvoInfo(state: RenderState): string | null {
     markLabel,
   ].filter(Boolean).join(", ");
 
+  const effort = conv?.effort ?? DEFAULT_EFFORT;
   const lines = [
     `Title:    ${title}`,
     `ID:       ${state.convId}`,
     `Model:    ${model}`,
+    `Effort:   ${effort}`,
     `Messages: ${msgs}`,
     `Created:  ${created}`,
     `Updated:  ${updated}`,
@@ -157,6 +160,23 @@ const commands: SlashCommand[] = [
       }
       clearPrompt(state);
       return { type: "handled" };
+    },
+  },
+  {
+    name: "/max",
+    description: "Toggle max reasoning effort",
+    handler: (_text, state) => {
+      if (!state.convId) {
+        state.messages.push({ role: "system", text: "No active conversation.", metadata: null });
+        clearPrompt(state);
+        return { type: "handled" };
+      }
+      const conv = state.sidebar.conversations.find(c => c.id === state.convId);
+      const current = conv?.effort ?? DEFAULT_EFFORT;
+      const next: EffortLevel = current === "max" ? "high" : "max";
+      state.messages.push({ role: "system", text: `Effort set to ${next}`, metadata: null });
+      clearPrompt(state);
+      return { type: "effort_changed", effort: next };
     },
   },
   {

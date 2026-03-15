@@ -6,8 +6,8 @@
  * In-flight stream tracking lives in streaming.ts.
  */
 
-import type { Conversation, ModelId, ConversationSummary, StoredMessage } from "./messages";
-import { createConversation, sortConversations, isToolResultMessage, topUnpinnedOrder, bottomPinnedOrder } from "./messages";
+import type { Conversation, ModelId, EffortLevel, ConversationSummary, StoredMessage } from "./messages";
+import { DEFAULT_EFFORT, createConversation, sortConversations, isToolResultMessage, topUnpinnedOrder, bottomPinnedOrder } from "./messages";
 import { buildDisplayData, type ConversationDisplayData } from "./display";
 import { summarizeTool } from "./tools/registry";
 import * as persistence from "./persistence";
@@ -77,6 +77,7 @@ export function clone(id: string): Conversation | null {
   const conv: Conversation = {
     id: newId,
     model: src.model,
+    effort: src.effort ?? DEFAULT_EFFORT,
     messages: structuredClone(src.messages),
     createdAt: now,
     updatedAt: now,
@@ -123,6 +124,15 @@ export function setModel(id: string, model: ModelId): boolean {
   const conv = conversations.get(id);
   if (!conv) return false;
   conv.model = model;
+  markDirty(id);
+  flush(id);
+  return true;
+}
+
+export function setEffort(id: string, effort: EffortLevel): boolean {
+  const conv = conversations.get(id);
+  if (!conv) return false;
+  conv.effort = effort;
   markDirty(id);
   flush(id);
   return true;
@@ -307,6 +317,7 @@ export function getSummary(id: string): ConversationSummary | null {
   return {
     id: conv.id,
     model: conv.model,
+    effort: conv.effort ?? DEFAULT_EFFORT,
     createdAt: conv.createdAt,
     updatedAt: conv.updatedAt,
     messageCount: conv.messages.length,

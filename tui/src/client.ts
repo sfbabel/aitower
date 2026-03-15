@@ -7,7 +7,7 @@
 import { connect, type Socket } from "net";
 import { existsSync } from "fs";
 import type { Command, Event, QueueTiming } from "./protocol";
-import type { ModelId, ImageAttachment } from "./messages";
+import type { ModelId, EffortLevel, ImageAttachment } from "./messages";
 import { socketPath } from "@exocortex/shared/paths";
 
 export type EventHandler = (event: Event) => void;
@@ -106,6 +106,10 @@ export class DaemonClient {
 
   setModel(convId: string, model: ModelId): void {
     this.send({ type: "set_model", convId, model });
+  }
+
+  setEffort(convId: string, effort: EffortLevel): void {
+    this.send({ type: "set_effort", convId, effort });
   }
 
   deleteConversation(convId: string): void {

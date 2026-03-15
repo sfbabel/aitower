@@ -12,6 +12,7 @@ import { refreshUsage, handleUsageHeaders, getLastUsage } from "./usage";
 import { orchestrateSendMessage } from "./orchestrator";
 import { complete } from "./llm";
 import { getToolDisplayInfo } from "./tools/registry";
+import { EFFORT_LEVELS } from "./messages";
 import * as convStore from "./conversations";
 import { DaemonServer, type ConnectedClient } from "./server";
 import type { Command } from "./protocol";
@@ -97,6 +98,22 @@ export function createHandler(server: DaemonServer) {
           server.sendTo(client, { type: "ack", reqId: cmd.reqId, convId: cmd.convId });
           server.broadcast({ type: "conversation_updated", summary: convStore.getSummary(cmd.convId)! });
           log("info", `handler: model set to ${cmd.model} for ${cmd.convId}`);
+        } else {
+          server.sendTo(client, { type: "error", reqId: cmd.reqId, convId: cmd.convId, message: `Conversation ${cmd.convId} not found` });
+        }
+        break;
+      }
+
+      case "set_effort": {
+        if (!EFFORT_LEVELS.includes(cmd.effort)) {
+          server.sendTo(client, { type: "error", reqId: cmd.reqId, convId: cmd.convId, message: `Invalid effort level: ${cmd.effort}. Valid: ${EFFORT_LEVELS.join(", ")}` });
+          break;
+        }
+        const ok = convStore.setEffort(cmd.convId, cmd.effort);
+        if (ok) {
+          server.sendTo(client, { type: "ack", reqId: cmd.reqId, convId: cmd.convId });
+          server.broadcast({ type: "conversation_updated", summary: convStore.getSummary(cmd.convId)! });
+          log("info", `handler: effort set to ${cmd.effort} for ${cmd.convId}`);
         } else {
           server.sendTo(client, { type: "error", reqId: cmd.reqId, convId: cmd.convId, message: `Conversation ${cmd.convId} not found` });
         }
