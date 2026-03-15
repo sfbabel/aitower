@@ -28,7 +28,7 @@ export const MARKS: readonly Mark[] = [
   { key: 6, emoji: "💡", label: "idea",      width: 2 },
   { key: 7, emoji: "🔒", label: "protected", width: 2 },
   { key: 8, emoji: "✅", label: "done",      width: 2 },
-  { key: 9, emoji: "👁", label: "watching",  width: 2 },
+  { key: 9, emoji: "📡", label: "watching",  width: 2 },
 ] as const;
 
 /** Lookup mark by digit key (1-9). */
