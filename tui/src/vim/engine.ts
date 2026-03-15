@@ -132,10 +132,25 @@ function handleNormalMode(
     return applyFindMotion(vim, vim.pendingFind, key.char, buffer, cursor, true);
   }
 
+  // ── Pending replace (r waiting for character) ──────────────────
+  if (vim.pendingReplace) {
+    resetPending(vim);
+    if (key.type !== "char" || !key.char) { return { type: "noop" }; }
+    const edit = ops.replaceChar(buffer, cursor, key.char);
+    if (edit.buffer === buffer) return { type: "noop" };
+    return { type: "buffer_edit", ...edit };
+  }
+
   // ── Count prefix ───────────────────────────────────────────────
   // Digits 1-9 start a count, 0 only continues (0 alone is line_start motion)
   if (/^[1-9]$/.test(ks) || (ks === "0" && vim.count !== null)) {
     vim.count = (vim.count ?? 0) * 10 + parseInt(ks, 10);
+    return { type: "pending" };
+  }
+
+  // ── r — initiate replace (prompt only) ──────────────────────────
+  if (ks === "r" && context === "prompt" && !vim.pendingOperator) {
+    vim.pendingReplace = true;
     return { type: "pending" };
   }
 

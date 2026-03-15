@@ -114,6 +114,13 @@ export function swapCase(buffer: string, pos: number, count: number): BufferEdit
   return { buffer: newBuffer, cursor: clampNormal(newBuffer, end) };
 }
 
+/** r — replace character under cursor with the given character. */
+export function replaceChar(buffer: string, pos: number, ch: string): BufferEdit {
+  if (pos >= buffer.length || buffer[pos] === "\n") return { buffer, cursor: pos };
+  const newBuffer = buffer.slice(0, pos) + ch + buffer.slice(pos + 1);
+  return { buffer: newBuffer, cursor: pos };
+}
+
 /** ~ (visual) — swap case of [start, end), cursor goes to start. */
 export function swapCaseRange(buffer: string, start: number, end: number): BufferEdit {
   if (start > end) [start, end] = [end, start];
