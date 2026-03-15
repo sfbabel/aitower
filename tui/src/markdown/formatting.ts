@@ -1,8 +1,6 @@
-// ANSI codes - defined locally
-const BOLD = "\x1b[1m";
-const BOLD_OFF = "\x1b[22m";
-const ITALIC = "\x1b[3m";
-const ITALIC_OFF = "\x1b[23m";
+import { theme } from "../theme";
+
+// Markdown-specific background not in the theme system
 const BG_CODE = "\x1b[48;2;22;32;48m"; // #162030 subtle tint for inline code
 
 // --- Terminal-aware character width ---
@@ -251,6 +249,32 @@ export function visibleLength(s: string): number {
   return termWidth(s.replace(/\x1b\[[0-9;]*m/g, ""));
 }
 
+// --- Hard-break utility ---
+// Breaks a single word that exceeds `width` into chunks, pushing full
+// chunks to `result` and returning the leftover tail.
+// Shared by paragraph wrapping (wordwrap.ts) and table cells (tables.ts).
+export function hardBreak(word: string, width: number, result: string[]): string {
+  let remaining = word;
+  for (;;) {
+    const [taken, rest] = sliceByWidth(remaining, width);
+    if (!rest) return taken;
+    if (taken === "") {
+      result.push(remaining.slice(0, 1));
+      remaining = remaining.slice(1);
+    } else {
+      result.push(taken);
+      remaining = rest;
+    }
+  }
+}
+
+// --- Horizontal rule detection ---
+// Matches CommonMark horizontal rules: 3+ of -, *, or _ with optional
+// spaces/tabs between them.
+export function isHorizontalRule(line: string): boolean {
+  return /^\s*([-*_])([ \t]*\1){2,}\s*$/.test(line);
+}
+
 // Find closing `marker` in `src` starting from `from`, skipping over
 // `…` code spans so that markers inside inline code are not matched.
 // Requires at least one character of content (i.e. the closing marker
@@ -282,7 +306,7 @@ function scan(src: string, bgRestore: string): { text: string; plain: string } {
       const close = findClosing(src, i + 3, '***');
       if (close >= 0) {
         const inner = scan(src.slice(i + 3, close), bgRestore);
-        text += BOLD + ITALIC + inner.text + ITALIC_OFF + BOLD_OFF;
+        text += theme.bold + theme.italic + inner.text + theme.italicOff + theme.boldOff;
         plain += inner.plain;
         i = close + 3;
         continue;
@@ -294,7 +318,7 @@ function scan(src: string, bgRestore: string): { text: string; plain: string } {
       const close = findClosing(src, i + 2, '**');
       if (close >= 0) {
         const inner = scan(src.slice(i + 2, close), bgRestore);
-        text += BOLD + inner.text + BOLD_OFF;
+        text += theme.bold + inner.text + theme.boldOff;
         plain += inner.plain;
         i = close + 2;
         continue;
@@ -306,7 +330,7 @@ function scan(src: string, bgRestore: string): { text: string; plain: string } {
       const close = findClosing(src, i + 1, '*');
       if (close >= 0) {
         const inner = scan(src.slice(i + 1, close), bgRestore);
-        text += ITALIC + inner.text + ITALIC_OFF;
+        text += theme.italic + inner.text + theme.italicOff;
         plain += inner.plain;
         i = close + 1;
         continue;

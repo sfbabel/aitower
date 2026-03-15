@@ -11,13 +11,7 @@ import { renderMetadata } from "./metadata";
 import { resolveToolDisplay } from "./toolstyles";
 import { formatSize, imageLabel } from "./clipboard";
 import { theme } from "./theme";
-import {
-  markdownWordWrap,
-  formatMarkdown,
-  isCodeBlockLine,
-  isBoxDrawingLine,
-  isHorizontalRule,
-} from "./markdown";
+import { markdownWordWrap } from "./markdown";
 
 // ── Word wrapping ───────────────────────────────────────────────────
 
@@ -85,22 +79,12 @@ function renderBlock(block: Block, contentWidth: number, toolRegistry: ToolDispl
           cont.push(w.cont[i]);
         }
       } else {
-        // Assistant text blocks: full markdown rendering
-        // bgRestore = theme.reset signals "assistant mode" to enable
-        // code blocks, tables, horizontal rules, and inline formatting
+        // Assistant text blocks: full markdown rendering.
+        // markdownWordWrap handles code blocks, tables, HRs, inline
+        // formatting, and word wrapping — output is fully formatted.
         const mdLines = markdownWordWrap(text, contentWidth, theme.reset);
         for (const line of mdLines) {
-          // Code block lines and box-drawing table lines already have
-          // ANSI formatting baked in — just indent them.
-          // Regular lines get inline markdown formatting applied.
-          if (isCodeBlockLine(line) || isBoxDrawingLine(line)) {
-            lines.push(`  ${line}`);
-          } else if (line === "") {
-            lines.push("");
-          } else {
-            const fmt = formatMarkdown(line, theme.reset);
-            lines.push(`  ${fmt.text}`);
-          }
+          lines.push(line === "" ? "" : `  ${line}`);
           cont.push(false);
         }
       }

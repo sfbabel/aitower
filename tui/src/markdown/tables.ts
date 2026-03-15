@@ -1,4 +1,4 @@
-import { formatMarkdown, stripMarkdown, termWidth, sliceByWidth } from "./formatting";
+import { formatMarkdown, stripMarkdown, termWidth, hardBreak } from "./formatting";
 
 /**
  * Detects markdown table rows (start and end with |)
@@ -100,7 +100,7 @@ function wrapCellContent(text: string, width: number): string[] {
   for (const word of words) {
     if (line === "") {
       if (termWidth(stripMarkdown(word)) > width) {
-        line = hardBreakCell(word, width, result);
+        line = hardBreak(word, width, result);
       } else {
         line = word;
       }
@@ -111,7 +111,7 @@ function wrapCellContent(text: string, width: number): string[] {
       } else {
         result.push(line);
         if (termWidth(stripMarkdown(word)) > width) {
-          line = hardBreakCell(word, width, result);
+          line = hardBreak(word, width, result);
         } else {
           line = word;
         }
@@ -121,25 +121,6 @@ function wrapCellContent(text: string, width: number): string[] {
 
   if (line) result.push(line);
   return result.length > 0 ? result : [""];
-}
-
-/**
- * Hard-break a word that doesn't fit in width.
- * Pushes full chunks to result, returns the leftover tail.
- */
-function hardBreakCell(word: string, width: number, result: string[]): string {
-  let remaining = word;
-  for (;;) {
-    const [taken, rest] = sliceByWidth(remaining, width);
-    if (!rest) return taken;
-    if (taken === "") {
-      result.push(remaining.slice(0, 1));
-      remaining = remaining.slice(1);
-    } else {
-      result.push(taken);
-      remaining = rest;
-    }
-  }
 }
 
 /**

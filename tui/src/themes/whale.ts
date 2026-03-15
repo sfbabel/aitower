@@ -51,4 +51,5 @@ export const whale: Theme = {
 
   // Style end
   boldOff: `${ESC}22m`,
+  italicOff: `${ESC}23m`,
 };

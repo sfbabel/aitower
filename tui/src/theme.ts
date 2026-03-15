@@ -52,6 +52,7 @@ export interface Theme {
 
   // Style end
   boldOff: string;        // End bold
+  italicOff: string;      // End italic
 }
 
 // ── Active theme ────────────────────────────────────────────────────

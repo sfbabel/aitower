@@ -1,8 +1,7 @@
-import { highlightLine, isLanguageSupported } from "./highlight";
-import { termWidth, sliceByWidth } from "./formatting";
+import { highlightLine, isLanguageSupported, FG_WHITE } from "./highlight";
+import { termWidth, hardBreak } from "./formatting";
 
-// ANSI color codes
-const FG_WHITE = "\x1b[38;2;255;255;255m";
+// ANSI color codes (syntax-highlight-specific, not in theme)
 const FG_SYN_GUTTER = "\x1b[38;2;55;65;80m";   // #374150 gutter char color
 const FG_SYN_LABEL = "\x1b[38;2;80;90;105m";    // #505a69 dim label for language name
 
@@ -57,7 +56,7 @@ export function renderCodeBlock(
       continue;
     }
 
-    const chunks = hardBreakCode(line, codeWidth);
+    const chunks = breakCodeLine(line, codeWidth);
     for (const chunk of chunks) {
       if (hasLang) {
         result.push(gutterPrefix + highlightLine(chunk, language));
@@ -71,28 +70,13 @@ export function renderCodeBlock(
 }
 
 /**
- * Breaks a code line into chunks that fit within the given width
+ * Breaks a code line into chunks that fit within the given width.
+ * Uses the shared hardBreak for the actual splitting.
  */
-function hardBreakCode(line: string, width: number): string[] {
-  if (termWidth(line) <= width) {
-    return [line];
-  }
-
+function breakCodeLine(line: string, width: number): string[] {
+  if (termWidth(line) <= width) return [line];
   const result: string[] = [];
-  let remaining = line;
-
-  while (remaining.length > 0) {
-    const [taken, rest] = sliceByWidth(remaining, width);
-
-    if (taken === "") {
-      // Single character wider than width — force take first character
-      result.push(remaining.slice(0, 1));
-      remaining = remaining.slice(1);
-    } else {
-      result.push(taken);
-      remaining = rest;
-    }
-  }
-
+  const tail = hardBreak(line, width, result);
+  if (tail) result.push(tail);
   return result;
 }

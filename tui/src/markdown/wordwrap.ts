@@ -1,32 +1,26 @@
-import { formatMarkdown, stripMarkdown, termWidth, visibleLength, sliceByWidth } from "./formatting";
-import { isCodeBlockLine, FENCE_OPEN_RE, isFenceClose, renderCodeBlock } from "./codeblocks";
-import { isTableLine, isTableSeparator, isBoxDrawingLine, renderTableBlock } from "./tables";
-
-const FG_DIM = "\x1b[38;2;100;100;100m";
-const RESET = "\x1b[0m";
-
-/**
- * Detects markdown horizontal rules (3+ of -, *, or _)
- */
-export function isHorizontalRule(line: string): boolean {
-  return /^\s*([-*_])([ \t]*\1){2,}\s*$/.test(line);
-}
+import { theme } from "../theme";
+import { formatMarkdown, stripMarkdown, termWidth, hardBreak, isHorizontalRule } from "./formatting";
+import { FENCE_OPEN_RE, isFenceClose, renderCodeBlock } from "./codeblocks";
+import { isTableLine, renderTableBlock } from "./tables";
 
 /**
  * Main markdown-aware word wrapping function.
- * 
+ *
  * Processes text line by line and:
  * 1. Detects fenced code blocks and renders them with syntax highlighting
  * 2. Detects table blocks and renders with box-drawing
  * 3. Detects horizontal rules and renders them as box-drawing lines
- * 4. For regular paragraph text, word-wraps to fit within width
- * 
+ * 4. For regular paragraph text, word-wraps to fit within width and
+ *    applies inline markdown formatting (bold/italic/code)
+ *
+ * Output lines are fully formatted — the caller only needs to indent them.
+ *
  * @param text The markdown text to wrap
  * @param width The width to wrap to
  * @param bgRestore Controls markdown formatting:
  *   - When provided (non-null), means we're rendering an assistant message — apply formatMarkdown
  *   - When null/undefined, it's a user message — keep text plain
- * @returns Array of wrapped lines
+ * @returns Array of wrapped, formatted lines
  */
 export function markdownWordWrap(text: string, width: number, bgRestore?: string): string[] {
   if (width < 1) return [text];
@@ -66,15 +60,14 @@ export function markdownWordWrap(text: string, width: number, bgRestore?: string
     // Detect horizontal rules
     if (bgRestore != null && isHorizontalRule(inputLines[i])) {
       // Render as a thin box-drawing line
-      const hrChar = "─";
       const hrWidth = Math.min(width, 40); // cap at 40 chars
-      result.push(FG_DIM + hrChar.repeat(hrWidth) + RESET);
+      result.push(theme.muted + "─".repeat(hrWidth) + theme.reset);
       i++;
       continue;
     }
 
-    // Regular paragraph text — word-wrap
-    wrapParagraph(inputLines[i], width, result);
+    // Regular paragraph text — word-wrap and optionally format
+    wrapParagraph(inputLines[i], width, result, bgRestore);
     i++;
   }
 
@@ -82,42 +75,46 @@ export function markdownWordWrap(text: string, width: number, bgRestore?: string
 }
 
 /**
- * Helper: wraps a single paragraph to fit within width
+ * Wraps a single paragraph to fit within width.
+ *
+ * When bgRestore is provided (assistant mode), width measurement accounts
+ * for markdown markers (** etc.) being invisible after formatting, and
+ * formatMarkdown is applied to each wrapped line.
  */
-function wrapParagraph(paragraph: string, width: number, result: string[]): void {
+function wrapParagraph(paragraph: string, width: number, result: string[], bgRestore?: string): void {
   if (paragraph === "") {
     result.push("");
     return;
   }
+
+  // In markdown mode, measure visible width excluding markers.
+  // In plain mode, measure raw terminal width.
+  const measure = bgRestore != null
+    ? (s: string) => termWidth(stripMarkdown(s))
+    : termWidth;
+
+  // First pass: word-wrap with correct measurement
+  const wrapped: string[] = [];
   const words = paragraph.split(/\s+/);
   let line = "";
   for (const word of words) {
     if (line === "") {
-      line = visibleLength(word) > width ? hardBreak(word, width, result) : word;
-    } else if (visibleLength(line) + 1 + visibleLength(word) <= width) {
+      line = measure(word) > width ? hardBreak(word, width, wrapped) : word;
+    } else if (measure(line) + 1 + measure(word) <= width) {
       line += " " + word;
     } else {
-      result.push(line);
-      line = visibleLength(word) > width ? hardBreak(word, width, result) : word;
+      wrapped.push(line);
+      line = measure(word) > width ? hardBreak(word, width, wrapped) : word;
     }
   }
-  if (line !== "") result.push(line);
-}
+  if (line !== "") wrapped.push(line);
 
-/**
- * Helper: hard-break a word that is longer than the width
- */
-function hardBreak(word: string, width: number, result: string[]): string {
-  let remaining = word;
-  for (;;) {
-    const [taken, rest] = sliceByWidth(remaining, width);
-    if (!rest) return taken;
-    if (taken === "") {
-      result.push(remaining.slice(0, 1));
-      remaining = remaining.slice(1);
-    } else {
-      result.push(taken);
-      remaining = rest;
+  // Second pass: apply inline markdown formatting if in assistant mode
+  if (bgRestore) {
+    for (const l of wrapped) {
+      result.push(formatMarkdown(l, bgRestore).text);
     }
+  } else {
+    result.push(...wrapped);
   }
 }
