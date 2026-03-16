@@ -282,19 +282,20 @@ export function renderSidebar(
   const rows: string[] = [];
   const innerWidth = SIDEBAR_WIDTH - 1; // -1 for right border │
   const borderFg = focused ? theme.borderFocused : theme.borderUnfocused;
+  const borderBg = theme.appBg ?? '';
 
   // Row 1: header
   const header = " Conversations";
   rows.push(
     theme.sidebarBg + theme.text + theme.bold +
     pad(header, innerWidth) +
-    theme.reset + borderFg + "│" + theme.reset,
+    theme.reset + borderBg + borderFg + "│" + theme.reset,
   );
 
   // Row 2: separator with ┤ junction
   rows.push(
-    borderFg +
-    "─".repeat(innerWidth) + "┤" + theme.reset,
+    theme.sidebarBg + borderFg +
+    "─".repeat(innerWidth) + borderBg + "┤" + theme.reset,
   );
 
   // Build display rows: section labels + delimiter + conversation entries
@@ -346,7 +347,7 @@ export function renderSidebar(
       rows.push(
         theme.sidebarBg +
         " ".repeat(innerWidth) +
-        theme.reset + borderFg + "│" + theme.reset,
+        theme.reset + borderBg + borderFg + "│" + theme.reset,
       );
       continue;
     }
@@ -357,7 +358,7 @@ export function renderSidebar(
       rows.push(
         theme.sidebarBg + theme.text + theme.bold +
         pad(dr.text!, innerWidth) +
-        theme.reset + borderFg + "│" + theme.reset,
+        theme.reset + borderBg + borderFg + "│" + theme.reset,
       );
       continue;
     }
@@ -366,7 +367,7 @@ export function renderSidebar(
       rows.push(
         theme.sidebarBg + theme.muted +
         pad(" " + "─".repeat(innerWidth - 2) + " ", innerWidth) +
-        theme.reset + borderFg + "│" + theme.reset,
+        theme.reset + borderBg + borderFg + "│" + theme.reset,
       );
       continue;
     }
@@ -413,7 +414,7 @@ export function renderSidebar(
     rows.push(
       theme.reset + bg + fg +
       prefix + streamIconColored + starIconColored + emojiIconColored + titleText + " ".repeat(padding) +
-      theme.reset + borderFg + "│" + theme.reset,
+      theme.reset + borderBg + borderFg + "│" + theme.reset,
     );
   }
 
