@@ -150,8 +150,9 @@ function buildRequest(
     model: MODEL_IDS[model], messages: injectMessageBreakpoints(messages),
     max_tokens: maxTokens, thinking, stream: true,
     metadata: { user_id: getMetadataUserId() },
-    output_config: { effort },
   };
+  // output_config.effort is only supported by models with adaptive thinking
+  if (adaptive) body.output_config = { effort };
   if (tools && tools.length > 0) body.tools = injectToolBreakpoints(tools);
   // Billing header must be the first system block — identifies this as a
   // Claude Code request so the API routes to the correct backend.
