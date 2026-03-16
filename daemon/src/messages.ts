@@ -71,12 +71,12 @@ export function isToolResultMessage(msg: StoredMessage): boolean {
   return msg.content.length > 0 && msg.content.some(b => b.type === "tool_result");
 }
 
-export function createConversation(id: string, model: ModelId, sortOrder?: number, title?: string): Conversation {
+export function createConversation(id: string, model: ModelId, sortOrder?: number, title?: string, effort?: EffortLevel): Conversation {
   const now = Date.now();
   return {
     id,
     model,
-    effort: DEFAULT_EFFORT,
+    effort: effort ?? DEFAULT_EFFORT,
     messages: [],
     createdAt: now,
     updatedAt: now,

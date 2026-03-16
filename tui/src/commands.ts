@@ -63,12 +63,11 @@ function formatConvoInfo(state: RenderState): string | null {
     markLabel,
   ].filter(Boolean).join(", ");
 
-  const effort = conv?.effort ?? DEFAULT_EFFORT;
   const lines = [
     `Title:    ${title}`,
     `ID:       ${state.convId}`,
     `Model:    ${model}`,
-    `Effort:   ${effort}`,
+    `Effort:   ${state.effort}`,
     `Messages: ${msgs}`,
     `Created:  ${created}`,
     `Updated:  ${updated}`,
@@ -169,21 +168,15 @@ const commands: SlashCommand[] = [
     description: "Set or show reasoning effort level",
     args: EFFORT_LEVELS.map(e => ({ name: e, desc: e === DEFAULT_EFFORT ? `${e} (default)` : e })),
     handler: (text, state) => {
-      if (!state.convId) {
-        state.messages.push({ role: "system", text: "No active conversation.", metadata: null });
-        clearPrompt(state);
-        return { type: "handled" };
-      }
-      const conv = state.sidebar.conversations.find(c => c.id === state.convId);
-      const current = conv?.effort ?? DEFAULT_EFFORT;
       const parts = text.split(/\s+/);
       const arg = parts[1] as EffortLevel | undefined;
       if (arg && EFFORT_LEVELS.includes(arg)) {
+        state.effort = arg;
         state.messages.push({ role: "system", text: `Effort set to ${arg}`, metadata: null });
         clearPrompt(state);
         return { type: "effort_changed", effort: arg };
       } else {
-        state.messages.push({ role: "system", text: `Current: ${current}. Available: ${EFFORT_LEVELS.join(", ")}`, metadata: null });
+        state.messages.push({ role: "system", text: `Current: ${state.effort}. Available: ${EFFORT_LEVELS.join(", ")}`, metadata: null });
       }
       clearPrompt(state);
       return { type: "handled" };

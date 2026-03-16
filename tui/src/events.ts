@@ -12,6 +12,7 @@ import type { AIMessage, SystemMessage, ImageAttachment } from "./messages";
 import { updateConversationList, updateConversation, syncSelectedIndex } from "./sidebar";
 import { theme } from "./theme";
 import { clearLocalQueue, removeLocalQueueEntry } from "./queue";
+import { DEFAULT_EFFORT } from "./messages";
 import type { Event } from "./protocol";
 
 // ── Daemon actions interface ────────────────────────────────────────
@@ -202,6 +203,10 @@ export function handleEvent(
 
     case "conversation_updated": {
       updateConversation(state.sidebar, event.summary);
+      // Sync effort if this is the active conversation (may have changed from another client)
+      if (event.summary.id === state.convId && event.summary.effort) {
+        state.effort = event.summary.effort;
+      }
       break;
     }
 
@@ -255,6 +260,9 @@ export function handleEvent(
       clearPendingAI(state);
       state.convId = event.convId;
       state.model = event.model;
+      // Sync effort from the loaded conversation's sidebar summary
+      const loadedConv = state.sidebar.conversations.find(c => c.id === event.convId);
+      state.effort = loadedConv?.effort ?? DEFAULT_EFFORT;
       state.scrollOffset = 0;
       state.contextTokens = event.contextTokens;
 

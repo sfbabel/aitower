@@ -22,6 +22,7 @@ export interface NewConversationCommand {
   type: "new_conversation";
   reqId?: string;
   model?: ModelId;
+  effort?: EffortLevel;
   /** Initial title. Clients that don't set this get an empty title. */
   title?: string;
 }

@@ -8,6 +8,7 @@ import { connect, type Socket } from "net";
 import { existsSync } from "fs";
 import type { Command, Event, QueueTiming } from "./protocol";
 import type { ModelId, EffortLevel, ImageAttachment } from "./messages";
+import { DEFAULT_EFFORT } from "./messages";
 import { socketPath } from "@exocortex/shared/paths";
 
 export type EventHandler = (event: Event) => void;
@@ -80,8 +81,8 @@ export class DaemonClient {
 
   // ── Convenience methods ─────────────────────────────────────────
 
-  createConversation(model?: import("./protocol").ModelId, title?: string): void {
-    this.send({ type: "new_conversation", model, title });
+  createConversation(model?: import("./protocol").ModelId, title?: string, effort?: EffortLevel): void {
+    this.send({ type: "new_conversation", model, title, effort: effort !== DEFAULT_EFFORT ? effort : undefined });
   }
 
   subscribe(convId: string): void {

@@ -150,7 +150,7 @@ function sendDirectly(messageText: string, images?: ImageAttachment[]): void {
     state.pendingSend.active = true;
     state.pendingSend.text = messageText;
     state.pendingSend.images = images;
-    daemon.createConversation(state.model, PENDING_TITLE);
+    daemon.createConversation(state.model, PENDING_TITLE, state.effort);
   } else {
     daemon.sendMessage(state.convId, messageText, startedAt, images);
   }

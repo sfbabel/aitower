@@ -37,8 +37,8 @@ export function generateId(): string {
 
 // ── Conversations ───────────────────────────────────────────────────
 
-export function create(id: string, model: ModelId, title?: string): Conversation {
-  const conv = createConversation(id, model, topUnpinnedOrder(conversations.values()), title);
+export function create(id: string, model: ModelId, title?: string, effort?: EffortLevel): Conversation {
+  const conv = createConversation(id, model, topUnpinnedOrder(conversations.values()), title, effort);
   conversations.set(id, conv);
   markDirty(id);
   flush(id);
