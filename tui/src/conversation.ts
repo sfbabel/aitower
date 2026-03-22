@@ -280,6 +280,8 @@ export interface MessageBound {
   start: number;
   /** Last line index (exclusive). */
   end: number;
+  /** Start of primary content (inclusive), after margins. */
+  contentStart: number;
   /** End of primary content (exclusive), before metadata/padding. im uses this. */
   contentEnd: number;
 }
@@ -312,19 +314,21 @@ export function buildMessageLines(
     const start = lines.length;
     if (msg.role === "user") {
       if (!firstUser) pushLine("");  // top margin (skip for first)
+      const contentStart = lines.length;
       pushBlock(renderUserMessage(msg.text, availableWidth, msg.images));
       const contentEnd = lines.length;
       pushLine("");                  // bottom margin
       firstUser = false;
-      messageBounds.push({ start, end: lines.length, contentEnd });
+      messageBounds.push({ start, end: lines.length, contentStart, contentEnd });
     } else if (msg.role === "assistant") {
       // AI messages: content blocks, then metadata
+      const contentStart = lines.length;
       for (const block of msg.blocks) {
         pushBlock(renderBlockCached(block, contentWidth, state.toolRegistry, state.externalToolStyles, state.showToolOutput));
       }
       const contentEnd = lines.length;
       for (const ml of renderMetadata(msg.metadata)) pushLine(ml);
-      messageBounds.push({ start, end: lines.length, contentEnd });
+      messageBounds.push({ start, end: lines.length, contentStart, contentEnd });
     } else {
       const color = msg.color || theme.dim;
       const sysWidth = availableWidth - 2; // 2-char indent
@@ -332,7 +336,7 @@ export function buildMessageLines(
       for (const sl of wrapped) {
         pushLine(`  ${color}${sl}${theme.reset}`);
       }
-      messageBounds.push({ start, end: lines.length, contentEnd: lines.length });
+      messageBounds.push({ start, end: lines.length, contentStart: start, contentEnd: lines.length });
     }
   }
 
@@ -344,7 +348,7 @@ export function buildMessageLines(
     }
     const contentEnd = lines.length;
     for (const ml of renderMetadata(state.pendingAI.metadata)) pushLine(ml);
-    messageBounds.push({ start, end: lines.length, contentEnd });
+    messageBounds.push({ start, end: lines.length, contentStart: start, contentEnd });
   }
 
   // Queued messages — dimmed user bubbles with timing label (after pendingAI)

@@ -74,6 +74,40 @@ export function applyHistoryAction(action: Action, state: RenderState): boolean 
     case "history_dollar":  state.historyCursor = lineEnd(cur, lines, wrapCont); break;
     case "history_gg":      state.historyCursor = bufferStart(lines); break;
     case "history_G":       state.historyCursor = bufferEnd(lines); break;
+    case "history_prev_message": {
+      const bounds = state.historyMessageBounds;
+      if (bounds.length === 0) break;
+      // Jump to the start (first content line) of the last message whose
+      // content start is strictly before the cursor. This mirrors }:
+      // pressing { inside a message goes to its start, pressing { at
+      // the start goes to the previous message's start.
+      let target = -1;
+      for (let i = bounds.length - 1; i >= 0; i--) {
+        if (bounds[i].contentStart < cur.row) { target = i; break; }
+      }
+      if (target >= 0) {
+        const row = bounds[target].contentStart;
+        state.historyCursor = { row, col: clampCol(0, lines, row) };
+      }
+      break;
+    }
+    case "history_next_message": {
+      const bounds = state.historyMessageBounds;
+      if (bounds.length === 0) break;
+      // Jump to the end (last content line) of the first message whose
+      // content end is strictly past the cursor. This mirrors {: pressing
+      // } inside a message goes to its end, pressing } at the end goes
+      // to the next message's end.
+      let target = -1;
+      for (let i = 0; i < bounds.length; i++) {
+        if (bounds[i].contentEnd - 1 > cur.row) { target = i; break; }
+      }
+      if (target >= 0) {
+        const row = bounds[target].contentEnd - 1;
+        state.historyCursor = { row, col: clampCol(0, lines, row) };
+      }
+      break;
+    }
     case "history_yy":      return true; // caller handles clipboard
     default:                return false;
   }
