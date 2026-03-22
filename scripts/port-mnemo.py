@@ -146,10 +146,8 @@ def convert_messages(mnemo_messages):
                 }
 
             # If content_blocks is empty (no text, no thinking, but had tool calls),
-            # that's fine - the tool_use blocks are the content
-            if not content_blocks:
-                # Edge case: assistant with nothing (shouldn't happen but be safe)
-                content_blocks.append({"type": "text", "text": ""})
+            # that's fine - the tool_use blocks are the content.
+            # Note: do NOT emit empty text blocks — the API rejects them.
 
             result.append({
                 "role": "assistant",
