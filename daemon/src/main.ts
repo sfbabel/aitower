@@ -21,7 +21,7 @@ import { createHandler } from "./handler";
 import { handleLogin } from "./cli";
 import * as convStore from "./conversations";
 import { startScheduler, stopScheduler, getCronDir, getJobs } from "./scheduler";
-import { initExternalTools, stopExternalTools, getExternalToolCount, getExternalToolStyles } from "./external-tools";
+import { initExternalTools, stopExternalTools, getExternalToolCount, getSupervisedDaemonCount, getExternalToolStyles } from "./external-tools";
 import { getToolDisplayInfo } from "./tools/registry";
 import { socketPath, pidPath, runtimeDir, worktreeName } from "@exocortex/shared/paths";
 
@@ -123,7 +123,8 @@ async function startDaemon(): Promise<void> {
   console.log(`  socket: ${SOCKET_PATH}`);
   console.log(`  auth:   ${authOk ? `✓ ${auth?.profile?.email ?? "authenticated"}` : "✗ not authenticated — run: bun run login"}`);
   console.log(`  cron:   ${cronJobs.length} job(s) in ${getCronDir()}`);
-  console.log(`  tools:  ${extToolCount} external tool(s)`);
+  const daemonCount = getSupervisedDaemonCount();
+  console.log(`  tools:  ${extToolCount} external tool(s)${daemonCount > 0 ? `, ${daemonCount} supervised daemon(s)` : ""}`);
   console.log(`\n  Waiting for connections...\n`);
 
   log("info", `exocortexd: ready on ${SOCKET_PATH} (auth=${!!authOk}, cron=${cronJobs.length})`);

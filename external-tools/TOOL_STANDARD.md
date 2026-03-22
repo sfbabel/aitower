@@ -40,6 +40,30 @@ automatically.
 - **systemHint**: Injected into the system prompt so the model knows the tool exists.
 - **display**: TUI styling for bash sub-command matching (label + hex color).
 
+### Optional: daemon supervision
+
+Tools that need a long-running background process declare a `daemon` field.
+The daemon auto-discovers it, spawns the process, and supervises it
+(restart on crash with exponential backoff).
+
+```json
+{
+  "daemon": {
+    "command": "npx tsx lib/daemon.ts",
+    "restart": "on-failure",
+    "env": { "NODE_ENV": "production" }
+  }
+}
+```
+
+- **command**: Shell command run from the tool's root directory.
+- **restart**: `"on-failure"` (default) — restart on non-zero exit.
+  `"always"` — restart on any exit. `"never"` — don't restart.
+- **env**: Additional environment variables (merged with process env).
+
+Stdout/stderr are captured to `config/service.log`. When a tool is removed,
+its daemon is stopped automatically.
+
 ## Entry point
 
 The `bin/` script is a thin bash wrapper. It resolves the project root,
