@@ -11,6 +11,13 @@ import type { RenderState, ContextMenuState, ContextMenuItem } from "./state";
 import type { ConversationSummary } from "./messages";
 import { theme } from "./theme";
 
+// ── Shared geometry ─────────────────────────────────────────────────
+
+/** Compute the inner content width for a set of menu items. */
+function menuInnerWidth(items: ContextMenuItem[]): number {
+  return Math.max(...items.map(i => i.label.length)) + 4;
+}
+
 // ── Menu builders ───────────────────────────────────────────────────
 
 /** Build menu items for a sidebar conversation. */
@@ -47,7 +54,7 @@ export function clampMenuPosition(
   rows: number,
   cols: number,
 ): void {
-  const innerWidth = Math.max(...menu.items.map(i => i.label.length)) + 4;
+  const innerWidth = menuInnerWidth(menu.items);
   const boxWidth = innerWidth + 2;
   const boxHeight = menu.items.length + 2;
   if (menu.row + boxHeight > rows) menu.row = Math.max(1, rows - boxHeight);
@@ -63,17 +70,16 @@ export type ContextMenuResult =
 
 export function handleContextMenuKey(key: KeyEvent, state: RenderState): ContextMenuResult {
   const menu = state.contextMenu!;
+  const innerWidth = menuInnerWidth(menu.items);
+  const boxWidth = innerWidth + 2;
 
   // Mouse click on a menu item
   if (key.type === "mouse_down" && key.row && key.col) {
     const itemRow = key.row - (menu.row + 1); // +1 for top border
-    if (itemRow >= 0 && itemRow < menu.items.length) {
-      // Check if click is within the menu box width
-      const menuWidth = Math.max(...menu.items.map(i => i.label.length)) + 6;
-      if (key.col >= menu.col && key.col < menu.col + menuWidth) {
-        menu.selection = itemRow;
-        return { type: "confirm", action: menu.items[itemRow].action };
-      }
+    if (itemRow >= 0 && itemRow < menu.items.length
+        && key.col >= menu.col && key.col < menu.col + boxWidth) {
+      menu.selection = itemRow;
+      return { type: "confirm", action: menu.items[itemRow].action };
     }
     // Click outside menu → cancel
     return { type: "cancel" };
@@ -81,10 +87,9 @@ export function handleContextMenuKey(key: KeyEvent, state: RenderState): Context
 
   // Mouse hover → highlight menu items
   if (key.type === "mouse_move" && key.row && key.col) {
-    const menuWidth = Math.max(...menu.items.map(i => i.label.length)) + 6;
     const itemRow = key.row - (menu.row + 1);
     if (itemRow >= 0 && itemRow < menu.items.length
-        && key.col >= menu.col && key.col < menu.col + menuWidth) {
+        && key.col >= menu.col && key.col < menu.col + boxWidth) {
       menu.selection = itemRow;
     }
     return { type: "handled" };
@@ -124,21 +129,17 @@ export function handleContextMenuKey(key: KeyEvent, state: RenderState): Context
 const ESC = "\x1b[";
 const move_to = (row: number, col: number) => `${ESC}${row};${col}H`;
 
-export function renderContextMenu(menu: ContextMenuState, rows: number, cols: number): string {
+/**
+ * Render the context menu overlay. Position is pre-clamped
+ * by clampMenuPosition() at creation time.
+ */
+export function renderContextMenu(menu: ContextMenuState): string {
   const items = menu.items;
   if (items.length === 0) return "";
 
-  const innerWidth = Math.max(...items.map(i => i.label.length)) + 4; // padding
-  const boxWidth = innerWidth + 2; // borders
-
-  // Position: anchor at click point, extend downward
-  let boxTop = menu.row;
-  let boxLeft = menu.col;
-
-  // Clamp: don't extend beyond screen edges
-  const boxHeight = items.length + 2; // items + top/bottom border
-  if (boxTop + boxHeight > rows) boxTop = Math.max(1, rows - boxHeight);
-  if (boxLeft + boxWidth > cols) boxLeft = Math.max(1, cols - boxWidth);
+  const innerWidth = menuInnerWidth(items);
+  const boxTop = menu.row;
+  const boxLeft = menu.col;
 
   let out = "";
 

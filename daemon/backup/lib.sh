@@ -37,15 +37,6 @@ load_config() {
     log "Config loaded from: $config_path"
 }
 
-# Build rsync exclude args from RSYNC_EXCLUDES array
-build_rsync_excludes() {
-    local excludes=()
-    for pattern in "${RSYNC_EXCLUDES[@]}"; do
-        excludes+=(--exclude="$pattern")
-    done
-    echo "${excludes[@]}"
-}
-
 # Check if a service name is in the DEFAULT_SERVICES skip list
 is_default_service() {
     local svc="$1"

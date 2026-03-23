@@ -12,7 +12,7 @@
 
 import type { KeyEvent } from "./input";
 import type { RenderState } from "./state";
-import { isStreaming } from "./state";
+import { isStreaming, MSG_AREA_START } from "./state";
 import type { Action } from "./keybinds";
 import { resolveAction } from "./keybinds";
 import {
@@ -43,7 +43,7 @@ import { handleEditMessageKey, openEditMessageModal } from "./editmessage";
 import { handleContextMenuKey, buildSidebarMenu, buildMessageMenu, clampMenuPosition } from "./contextmenu";
 import { PROMPT_PREFIX_LEN } from "./render";
 import { readClipboardImage } from "./clipboard";
-import type { MouseSelection } from "./state";
+import { screenToHistoryPos, getMouseSelectionText, wordBoundsAt, startDragScroll, stopDragScroll } from "./mouse";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -92,190 +92,10 @@ function toggleSidebar(state: RenderState): void {
   }
 }
 
-// ── Mouse selection helpers ──────────────────────────────────────
-
-/**
- * Convert a screen position (1-based row/col) in the message area to
- * a history line index and visible column. Returns null if the
- * coordinates don't map to a valid history line.
- */
-function screenToHistoryPos(
-  screenRow: number,
-  screenCol: number,
-  state: RenderState,
-): { lineIdx: number; visCol: number } | null {
-  const L = state.layout;
-  const lines = state.historyLines;
-  const totalLines = lines.length;
-  const messageAreaStart = 3;
-  const messageAreaHeight = L.sepAbove - messageAreaStart;
-
-  const i = screenRow - messageAreaStart;
-  if (i < 0 || i >= messageAreaHeight) return null;
-
-  let viewStart: number;
-  if (state.scrollOffset === 0) {
-    viewStart = Math.max(0, totalLines - messageAreaHeight);
-  } else {
-    viewStart = Math.max(0, totalLines - messageAreaHeight - state.scrollOffset);
-  }
-
-  const lineIdx = viewStart + i;
-  if (lineIdx >= totalLines) return null;
-
-  // Visible column: screen col minus the chat-area start
-  const visCol = Math.max(0, screenCol - L.chatCol);
-  return { lineIdx, visCol };
-}
-
-/**
- * Extract the mouse-selected text from historyLines.
- * Handles single-line and multi-line selections, stripping ANSI.
- */
-function getMouseSelectionText(sel: MouseSelection, state: RenderState): string {
-  const lines = state.historyLines;
-  const wrapCont = state.historyWrapContinuation;
-
-  // Normalize: startRow/Col is earlier in the buffer
-  let startRow: number, startCol: number, endRow: number, endCol: number;
-  if (sel.anchorRow < sel.endRow || (sel.anchorRow === sel.endRow && sel.anchorCol <= sel.endCol)) {
-    startRow = sel.anchorRow; startCol = sel.anchorCol;
-    endRow = sel.endRow; endCol = sel.endCol;
-  } else {
-    startRow = sel.endRow; startCol = sel.endCol;
-    endRow = sel.anchorRow; endCol = sel.anchorCol;
-  }
-
-  if (startRow === endRow) {
-    const plain = stripAnsi(lines[startRow] ?? "");
-    return plain.slice(startCol, endCol + 1);
-  }
-
-  // Multi-line
-  const result: string[] = [];
-  for (let r = startRow; r <= endRow; r++) {
-    const plain = stripAnsi(lines[r] ?? "");
-    if (r === startRow) {
-      result.push(plain.slice(startCol).trimEnd());
-    } else if (r === endRow) {
-      const text = plain.slice(0, endCol + 1).trimEnd();
-      // If this is a word-wrap continuation, join with space instead of newline
-      if (wrapCont[r]) {
-        result[result.length - 1] += (text ? " " + text : "");
-      } else {
-        result.push(text);
-      }
-    } else {
-      const text = plain.trim();
-      if (wrapCont[r]) {
-        result[result.length - 1] += (text ? " " + text : "");
-      } else {
-        result.push(text);
-      }
-    }
-  }
-  return result.join("\n");
-}
-
-/**
- * Find the word boundaries around a position in a plain text string.
- * Returns [start, end] inclusive indices. Used for right-click
- * word-copy when there's no active drag selection.
- */
-function wordBoundsAt(text: string, col: number): [number, number] {
-  if (col >= text.length) return [col, col];
-  // If on whitespace, return just the char
-  if (/\s/.test(text[col])) return [col, col];
-
-  let start = col;
-  let end = col;
-  const isWordChar = (ch: string) => /\w/.test(ch);
-  const startIsWord = isWordChar(text[col]);
-
-  while (start > 0 && (startIsWord ? isWordChar(text[start - 1]) : (!isWordChar(text[start - 1]) && !/\s/.test(text[start - 1])))) {
-    start--;
-  }
-  while (end < text.length - 1 && (startIsWord ? isWordChar(text[end + 1]) : (!isWordChar(text[end + 1]) && !/\s/.test(text[end + 1])))) {
-    end++;
-  }
-  return [start, end];
-}
-
-// ── Drag auto-scroll ────────────────────────────────────────────────
-//
-// When dragging past the top/bottom of the message area, a repeating
-// timer scrolls the viewport and extends the selection. The timer
-// fires even while the mouse is held still at the edge.
-
-let dragScrollTimer: ReturnType<typeof setInterval> | null = null;
-let dragScrollRenderFn: (() => void) | null = null;
-let dragScrollState: RenderState | null = null;
-/** 1 = scrolling up (towards older), -1 = scrolling down (towards newer). */
-let dragScrollDir: 1 | -1 = 1;
-/** Current mouse screen column (for extending selection during auto-scroll). */
-let dragScrollCol: number = 0;
-
-const DRAG_SCROLL_INTERVAL = 60; // ms between scroll ticks
-const DRAG_SCROLL_LINES = 2;     // lines per tick
-
-/**
- * Register the render callback. Called once from main.ts so the
- * auto-scroll timer can trigger re-renders.
- */
-export function setDragScrollRender(fn: () => void): void {
-  dragScrollRenderFn = fn;
-}
-
-function startDragScroll(dir: 1 | -1, state: RenderState, screenCol: number): void {
-  dragScrollDir = dir;
-  dragScrollState = state;
-  dragScrollCol = screenCol;
-  if (dragScrollTimer) return; // already running
-  dragScrollTimer = setInterval(dragScrollTick, DRAG_SCROLL_INTERVAL);
-}
-
-function stopDragScroll(): void {
-  if (dragScrollTimer) {
-    clearInterval(dragScrollTimer);
-    dragScrollTimer = null;
-  }
-  dragScrollState = null;
-}
-
-function dragScrollTick(): void {
-  const state = dragScrollState;
-  if (!state || !state.mouseSelection || state.mouseSelection.finalized) {
-    stopDragScroll();
-    return;
-  }
-
-  const L = state.layout;
-  const messageAreaStart = 3;
-  const messageAreaHeight = L.sepAbove - messageAreaStart;
-  const totalLines = state.historyLines.length;
-  if (totalLines <= messageAreaHeight) { stopDragScroll(); return; }
-
-  // Scroll viewport
-  const maxScroll = Math.max(0, totalLines - messageAreaHeight);
-  state.scrollOffset = Math.max(0, Math.min(
-    state.scrollOffset + dragScrollDir * DRAG_SCROLL_LINES,
-    maxScroll,
-  ));
-
-  // Compute the edge row that's now visible and extend selection to it
-  const viewStart = Math.max(0, totalLines - messageAreaHeight - state.scrollOffset);
-  const edgeLineIdx = dragScrollDir > 0
-    ? viewStart                              // scrolling up → top visible line
-    : Math.min(viewStart + messageAreaHeight - 1, totalLines - 1); // scrolling down → bottom
-
-  const visCol = Math.max(0, dragScrollCol - L.chatCol);
-  state.mouseSelection.endRow = edgeLineIdx;
-  state.mouseSelection.endCol = visCol;
-
-  if (dragScrollRenderFn) dragScrollRenderFn();
-}
-
 // ── Mouse routing ──────────────────────────────────────────────────
+
+// Re-export setDragScrollRender so main.ts can import from this file
+export { setDragScrollRender } from "./mouse";
 
 function handleMouse(key: KeyEvent, state: RenderState): KeyResult {
   const { row, col, button } = key;
@@ -283,7 +103,7 @@ function handleMouse(key: KeyEvent, state: RenderState): KeyResult {
 
   const L = state.layout;
   const inSidebar = state.sidebar.open && col <= L.sidebarWidth;
-  const inMessages = !inSidebar && row >= 3 && row < L.sepAbove;
+  const inMessages = !inSidebar && row >= MSG_AREA_START && row < L.sepAbove;
   const inPrompt = !inSidebar && row >= L.firstInputRow && row < L.sepBelow;
 
   // ── Mouse move → drag selection or sidebar hover ───────────────
@@ -296,7 +116,7 @@ function handleMouse(key: KeyEvent, state: RenderState): KeyResult {
         stopDragScroll();
         state.mouseSelection.endRow = pos.lineIdx;
         state.mouseSelection.endCol = pos.visCol;
-      } else if (row < 3) {
+      } else if (row < MSG_AREA_START) {
         // Above message area → auto-scroll up
         startDragScroll(1, state, col);
       } else if (row >= L.sepAbove) {
@@ -388,8 +208,6 @@ function handleMouse(key: KeyEvent, state: RenderState): KeyResult {
         source: "sidebar",
         convId: conv.id,
         convIdx,
-        lineIdx: 0,
-        visCol: 0,
       };
       clampMenuPosition(state.contextMenu, state.rows, state.cols);
       return { type: "handled" };
@@ -414,8 +232,6 @@ function handleMouse(key: KeyEvent, state: RenderState): KeyResult {
         selection: 0,
         row, col,
         source: "message",
-        convId: state.convId ?? "",
-        convIdx: -1,
         lineIdx: pos?.lineIdx ?? 0,
         visCol: pos?.visCol ?? 0,
       };
@@ -492,8 +308,8 @@ function executeContextMenuAction(action: string, state: RenderState): KeyResult
   }
 
   // ── Message area context menu actions ─────────────────────────
-  const lineIdx = menu.lineIdx;
-  const visCol = menu.visCol;
+  if (menu.source !== "message") return { type: "handled" };
+  const { lineIdx, visCol } = menu;
   const lines = state.historyLines;
   const wrapCont = state.historyWrapContinuation;
 

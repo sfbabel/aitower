@@ -60,22 +60,31 @@ export interface ContextMenuItem {
   action: string;
 }
 
-export interface ContextMenuState {
+/** Shared fields for all context menus. */
+interface ContextMenuBase {
   items: ContextMenuItem[];
   selection: number;
-  row: number;        // screen anchor (1-based)
-  col: number;        // screen anchor (1-based)
-  /** Where the menu was triggered from. */
-  source: "sidebar" | "message";
-  // Sidebar context (source === "sidebar")
-  convId: string;     // conversation this menu targets
-  convIdx: number;    // sidebar index
-  // Message context (source === "message")
-  /** History line index where right-click occurred. */
-  lineIdx: number;
-  /** Visible column where right-click occurred. */
-  visCol: number;
+  row: number;        // screen anchor (1-based, pre-clamped)
+  col: number;        // screen anchor (1-based, pre-clamped)
 }
+
+/** Right-click on a sidebar conversation. */
+export interface SidebarMenuState extends ContextMenuBase {
+  source: "sidebar";
+  convId: string;
+  convIdx: number;
+}
+
+/** Right-click in the message area. */
+export interface MessageMenuState extends ContextMenuBase {
+  source: "message";
+  lineIdx: number;    // history line index where right-click occurred
+  visCol: number;     // visible column where right-click occurred
+}
+
+export type ContextMenuState = SidebarMenuState | MessageMenuState;
+
+// ── Mouse selection types ───────────────────────────────────────────
 
 /** Mouse drag selection in the message area. */
 export interface MouseSelection {
@@ -91,6 +100,27 @@ export interface MouseSelection {
   finalized: boolean;
 }
 
+/** Normalized selection range (start ≤ end). */
+export interface SelectionRange {
+  startRow: number;
+  startCol: number;
+  endRow: number;
+  endCol: number;
+}
+
+/** Normalize a MouseSelection so start ≤ end. */
+export function normalizeSelection(sel: MouseSelection): SelectionRange {
+  if (sel.anchorRow < sel.endRow || (sel.anchorRow === sel.endRow && sel.anchorCol <= sel.endCol)) {
+    return { startRow: sel.anchorRow, startCol: sel.anchorCol, endRow: sel.endRow, endCol: sel.endCol };
+  }
+  return { startRow: sel.endRow, startCol: sel.endCol, endRow: sel.anchorRow, endCol: sel.anchorCol };
+}
+
+// ── Layout cache ────────────────────────────────────────────────────
+
+/** First row of the message area (1-based). Topbar=1, sep=2, messages start at 3. */
+export const MSG_AREA_START = 3;
+
 /** Cached layout values — set by the renderer, read by scroll and mouse functions. */
 export interface LayoutCache {
   totalLines: number;      // total rendered message lines
@@ -101,6 +131,14 @@ export interface LayoutCache {
   sepAbove: number;        // separator row above input
   firstInputRow: number;   // first row of prompt input
   sepBelow: number;        // separator row below input
+}
+
+/**
+ * Compute the first history-line index visible in the viewport.
+ * Pure function — no state mutation.
+ */
+export function viewStart(totalLines: number, areaHeight: number, scrollOffset: number): number {
+  return Math.max(0, totalLines - areaHeight - scrollOffset);
 }
 
 export interface RenderState {

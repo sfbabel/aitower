@@ -12,6 +12,7 @@
  */
 
 import type { RenderState } from "./state";
+import { normalizeSelection, viewStart as computeViewStart, MSG_AREA_START } from "./state";
 import type { ImageAttachment, ConversationSummary } from "./messages";
 import { renderStatusLine } from "./statusline";
 import { renderTopbar } from "./topbar";
@@ -185,9 +186,8 @@ export function render(state: RenderState): void {
   const promptFocused = state.panelFocus === "chat" && state.chatFocus === "prompt";
   const promptColor = promptFocused ? theme.accent : theme.dim;
 
-  // ── Message area (rows 3 to sepAbove-1) ────────────────────────
-  const messageAreaStart = 3;
-  const messageAreaHeight = sepAbove - messageAreaStart;
+  // ── Message area (rows MSG_AREA_START to sepAbove-1) ────────────
+  const messageAreaHeight = sepAbove - MSG_AREA_START;
   const { lines: allLines, messageBounds, wrapContinuation } = buildMessageLines(state, chatW);
   const totalLines = allLines.length;
 
@@ -213,12 +213,7 @@ export function render(state: RenderState): void {
   state.layout.firstInputRow = firstInputRow;
   state.layout.sepBelow = sepBelow;
 
-  let viewStart: number;
-  if (state.scrollOffset === 0) {
-    viewStart = Math.max(0, totalLines - messageAreaHeight);
-  } else {
-    viewStart = Math.max(0, totalLines - messageAreaHeight - state.scrollOffset);
-  }
+  const vs = computeViewStart(totalLines, messageAreaHeight, state.scrollOffset);
 
   // Compute visual selection range if in visual mode
   const inVisual = historyFocused
@@ -243,22 +238,14 @@ export function render(state: RenderState): void {
     hlLast = range.last;
   }
 
-  // Mouse drag selection range (normalized so mSelStart ≤ mSelEnd)
+  // Mouse drag selection range (normalized so start ≤ end)
   const mSel = state.mouseSelection;
-  let mSelStartRow = -1, mSelStartCol = -1, mSelEndRow = -1, mSelEndCol = -1;
-  if (mSel) {
-    if (mSel.anchorRow < mSel.endRow || (mSel.anchorRow === mSel.endRow && mSel.anchorCol <= mSel.endCol)) {
-      mSelStartRow = mSel.anchorRow; mSelStartCol = mSel.anchorCol;
-      mSelEndRow = mSel.endRow; mSelEndCol = mSel.endCol;
-    } else {
-      mSelStartRow = mSel.endRow; mSelStartCol = mSel.endCol;
-      mSelEndRow = mSel.anchorRow; mSelEndCol = mSel.anchorCol;
-    }
-  }
-  const hasMouseSel = mSel !== null && (mSelStartRow !== mSelEndRow || mSelStartCol !== mSelEndCol);
+  const mRange = mSel ? normalizeSelection(mSel) : null;
+  const hasMouseSel = mRange !== null
+    && (mRange.startRow !== mRange.endRow || mRange.startCol !== mRange.endCol);
 
   for (let i = 0; i < messageAreaHeight; i++) {
-    const row = messageAreaStart + i;
+    const row = MSG_AREA_START + i;
     out.push(move_to(row, 1) + cl);
     // Sidebar column (if open)
     if (sidebarOpen && sbRows[row - 1]) {
@@ -266,26 +253,26 @@ export function render(state: RenderState): void {
     }
     // Chat content at chatCol
     out.push(move_to(row, chatCol));
-    const lineIdx = viewStart + i;
+    const lineIdx = vs + i;
     if (lineIdx < totalLines) {
       const line = allLines[lineIdx];
 
       // Mouse drag selection takes priority over vim visual
-      if (hasMouseSel && lineIdx >= mSelStartRow && lineIdx <= mSelEndRow) {
+      if (hasMouseSel && mRange && lineIdx >= mRange.startRow && lineIdx <= mRange.endRow) {
         const plain = stripAnsi(line);
         const bounds = contentBounds(plain);
         let sCol: number;
         let eCol: number;
 
-        if (mSelStartRow === mSelEndRow) {
-          sCol = mSelStartCol;
-          eCol = mSelEndCol;
-        } else if (lineIdx === mSelStartRow) {
-          sCol = mSelStartCol;
+        if (mRange.startRow === mRange.endRow) {
+          sCol = mRange.startCol;
+          eCol = mRange.endCol;
+        } else if (lineIdx === mRange.startRow) {
+          sCol = mRange.startCol;
           eCol = bounds.end;
-        } else if (lineIdx === mSelEndRow) {
+        } else if (lineIdx === mRange.endRow) {
           sCol = bounds.start;
-          eCol = mSelEndCol;
+          eCol = mRange.endCol;
         } else {
           sCol = bounds.start;
           eCol = bounds.end;
@@ -474,7 +461,7 @@ export function render(state: RenderState): void {
 
   // ── Context menu overlay ────────────────────────────────────
   if (state.contextMenu) {
-    out.push(renderContextMenu(state.contextMenu, rows, cols));
+    out.push(renderContextMenu(state.contextMenu));
   }
 
   // ── Hover tooltip (sidebar) ────────────────────────────────

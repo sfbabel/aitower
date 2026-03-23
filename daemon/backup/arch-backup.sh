@@ -42,7 +42,7 @@ for f in "${ETC_FILES[@]}"; do
     src="/etc/$f"
     if [[ -f "$src" ]]; then
         mkdir -p "$SYSCONF/$(dirname "$f")"
-        cp "$src" "$SYSCONF/$f" 2>/dev/null || true
+        cp "$src" "$SYSCONF/$f" 2>/dev/null || warn "Failed to copy /etc/$f"
     fi
 done
 
@@ -50,7 +50,7 @@ for d in "${ETC_DIRS[@]}"; do
     src="/etc/$d"
     if [[ -d "$src" ]]; then
         mkdir -p "$SYSCONF/$d"
-        cp -a "$src/"* "$SYSCONF/$d/" 2>/dev/null || true
+        cp -a "$src/"* "$SYSCONF/$d/" 2>/dev/null || warn "Failed to copy /etc/$d/"
     fi
 done
 
@@ -87,7 +87,9 @@ DOTDIR="$BACKUP_DIR/dotfiles"
 
 # Shell dotfiles
 for f in "${DOTFILES[@]}"; do
-    [[ -f "$HOME/$f" ]] && cp "$HOME/$f" "$DOTDIR/" 2>/dev/null || true
+    if [[ -f "$HOME/$f" ]]; then
+        cp "$HOME/$f" "$DOTDIR/" 2>/dev/null || warn "Failed to copy $f"
+    fi
 done
 
 # ~/.config items from config list
@@ -121,8 +123,11 @@ fi
 
 # SSH keys
 if [[ -d "$HOME/.ssh" ]]; then
-    cp -a "$HOME/.ssh" "$DOTDIR/ssh"
-    chmod 700 "$DOTDIR/ssh" 2>/dev/null || true  # no-op on FAT32
+    if cp -a "$HOME/.ssh" "$DOTDIR/ssh" 2>/dev/null; then
+        chmod 700 "$DOTDIR/ssh" 2>/dev/null || true  # no-op on FAT32
+    else
+        warn "Failed to copy ~/.ssh — keys NOT backed up"
+    fi
 fi
 
 ok "Dotfiles captured"
@@ -214,6 +219,45 @@ if (( ${#BACKUPS[@]} > MAX_BACKUPS )); then
         rm -rf "${BACKUPS[$i]}"
     done
     ok "Pruned"
+fi
+
+# ── 11. Verify backup integrity ───────────────────────────
+log "Verifying backup..."
+ERRORS=0
+
+# Package lists should be non-empty
+for f in "$BACKUP_DIR/packages/official-explicit.txt" "$BACKUP_DIR/packages/aur-explicit.txt"; do
+    if [[ ! -s "$f" ]]; then
+        warn "Empty package list: $(basename "$f")"
+        ERRORS=$((ERRORS + 1))
+    fi
+done
+
+# SSH keys should exist if source does
+if [[ -d "$HOME/.ssh" && ! -d "$BACKUP_DIR/dotfiles/ssh" ]]; then
+    warn "SSH keys missing from backup"
+    ERRORS=$((ERRORS + 1))
+fi
+
+# At least one data dir should have synced
+DATA_COUNT=$(find "$BACKUP_DIR/data" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+if (( DATA_COUNT == 0 )); then
+    warn "No data directories were synced"
+    ERRORS=$((ERRORS + 1))
+fi
+
+# Scripts bundle should be complete
+for f in lib.sh backup.conf arch-restore.sh arch-backup.sh; do
+    if [[ ! -f "$BACKUP_DIR/scripts/$f" ]]; then
+        warn "Missing from scripts bundle: $f"
+        ERRORS=$((ERRORS + 1))
+    fi
+done
+
+if (( ERRORS > 0 )); then
+    warn "Backup completed with $ERRORS warning(s) — review above"
+else
+    ok "Backup verified"
 fi
 
 # ── Summary ──────────────────────────────────────────────

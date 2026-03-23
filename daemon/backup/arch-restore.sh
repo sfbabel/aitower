@@ -21,22 +21,19 @@ fi
 
 BACKUP_DIR="$(realpath "$BACKUP_DIR")"
 
-# Source lib from backup's bundled scripts, or from same dir as this script
+# Source lib + config — check bundled scripts first, then script's own directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -f "$BACKUP_DIR/scripts/lib.sh" ]]; then
+if [[ -f "$BACKUP_DIR/scripts/lib.sh" && -f "$BACKUP_DIR/scripts/backup.conf" ]]; then
     source "$BACKUP_DIR/scripts/lib.sh"
     load_config "$BACKUP_DIR/scripts/backup.conf"
 elif [[ -f "$SCRIPT_DIR/lib.sh" ]]; then
     source "$SCRIPT_DIR/lib.sh"
     load_config
 else
-    # Minimal fallback if lib.sh is missing
-    log()  { echo "▸ $*"; }
-    ok()   { echo "✓ $*"; }
-    warn() { echo "⚠ $*"; }
-    err()  { echo "✗ $*" >&2; }
-    ask()  { echo -n "? $* [y/N] "; read -r ans; [[ "$ans" =~ ^[Yy] ]]; }
-    echo "Warning: lib.sh not found, running with defaults"
+    echo "✗ Fatal: cannot find lib.sh and backup.conf" >&2
+    echo "  Expected at: $BACKUP_DIR/scripts/ or $SCRIPT_DIR/" >&2
+    echo "  These are bundled with every backup. Is the backup corrupt?" >&2
+    exit 1
 fi
 
 echo ""
@@ -93,11 +90,19 @@ if ask "Install packages?"; then
 
     log "Installing official packages..."
     if [[ -f "$BACKUP_DIR/packages/official-explicit.txt" ]]; then
-        # Install one-by-one with --needed to skip existing, tolerate removed packages
-        while read -r pkg _ver; do
-            sudo pacman -S --needed --noconfirm "$pkg" 2>/dev/null || warn "Skipped: $pkg (not in repos)"
-        done < "$BACKUP_DIR/packages/official-explicit.txt"
-        ok "Official packages installed"
+        PKG_LIST=$(cut -d' ' -f1 "$BACKUP_DIR/packages/official-explicit.txt")
+        # Try batch install first (fast path)
+        if echo "$PKG_LIST" | sudo pacman -S --needed --noconfirm - 2>/dev/null; then
+            ok "Official packages installed"
+        else
+            # Batch failed — some packages likely removed from repos. Fall back to per-package.
+            warn "Batch install failed, falling back to per-package..."
+            echo "$PKG_LIST" | while read -r pkg; do
+                [[ -z "$pkg" ]] && continue
+                sudo pacman -S --needed --noconfirm "$pkg" 2>/dev/null || warn "Skipped: $pkg (not in repos)"
+            done
+            ok "Official packages installed (with fallback)"
+        fi
     fi
 
     log "Installing yay (AUR helper)..."
