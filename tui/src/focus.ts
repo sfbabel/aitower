@@ -200,6 +200,80 @@ function wordBoundsAt(text: string, col: number): [number, number] {
   return [start, end];
 }
 
+// ── Drag auto-scroll ────────────────────────────────────────────────
+//
+// When dragging past the top/bottom of the message area, a repeating
+// timer scrolls the viewport and extends the selection. The timer
+// fires even while the mouse is held still at the edge.
+
+let dragScrollTimer: ReturnType<typeof setInterval> | null = null;
+let dragScrollRenderFn: (() => void) | null = null;
+let dragScrollState: RenderState | null = null;
+/** 1 = scrolling up (towards older), -1 = scrolling down (towards newer). */
+let dragScrollDir: 1 | -1 = 1;
+/** Current mouse screen column (for extending selection during auto-scroll). */
+let dragScrollCol: number = 0;
+
+const DRAG_SCROLL_INTERVAL = 60; // ms between scroll ticks
+const DRAG_SCROLL_LINES = 2;     // lines per tick
+
+/**
+ * Register the render callback. Called once from main.ts so the
+ * auto-scroll timer can trigger re-renders.
+ */
+export function setDragScrollRender(fn: () => void): void {
+  dragScrollRenderFn = fn;
+}
+
+function startDragScroll(dir: 1 | -1, state: RenderState, screenCol: number): void {
+  dragScrollDir = dir;
+  dragScrollState = state;
+  dragScrollCol = screenCol;
+  if (dragScrollTimer) return; // already running
+  dragScrollTimer = setInterval(dragScrollTick, DRAG_SCROLL_INTERVAL);
+}
+
+function stopDragScroll(): void {
+  if (dragScrollTimer) {
+    clearInterval(dragScrollTimer);
+    dragScrollTimer = null;
+  }
+  dragScrollState = null;
+}
+
+function dragScrollTick(): void {
+  const state = dragScrollState;
+  if (!state || !state.mouseSelection || state.mouseSelection.finalized) {
+    stopDragScroll();
+    return;
+  }
+
+  const L = state.layout;
+  const messageAreaStart = 3;
+  const messageAreaHeight = L.sepAbove - messageAreaStart;
+  const totalLines = state.historyLines.length;
+  if (totalLines <= messageAreaHeight) { stopDragScroll(); return; }
+
+  // Scroll viewport
+  const maxScroll = Math.max(0, totalLines - messageAreaHeight);
+  state.scrollOffset = Math.max(0, Math.min(
+    state.scrollOffset + dragScrollDir * DRAG_SCROLL_LINES,
+    maxScroll,
+  ));
+
+  // Compute the edge row that's now visible and extend selection to it
+  const viewStart = Math.max(0, totalLines - messageAreaHeight - state.scrollOffset);
+  const edgeLineIdx = dragScrollDir > 0
+    ? viewStart                              // scrolling up → top visible line
+    : Math.min(viewStart + messageAreaHeight - 1, totalLines - 1); // scrolling down → bottom
+
+  const visCol = Math.max(0, dragScrollCol - L.chatCol);
+  state.mouseSelection.endRow = edgeLineIdx;
+  state.mouseSelection.endCol = visCol;
+
+  if (dragScrollRenderFn) dragScrollRenderFn();
+}
+
 // ── Mouse routing ──────────────────────────────────────────────────
 
 function handleMouse(key: KeyEvent, state: RenderState): KeyResult {
@@ -213,12 +287,20 @@ function handleMouse(key: KeyEvent, state: RenderState): KeyResult {
 
   // ── Mouse move → drag selection or sidebar hover ───────────────
   if (key.type === "mouse_move") {
-    // Active drag in message area (button field has bit 5 set for motion)
+    // Active drag selection
     if (state.mouseSelection && !state.mouseSelection.finalized) {
       const pos = screenToHistoryPos(row, col, state);
       if (pos) {
+        // Inside message area — update selection, stop auto-scroll
+        stopDragScroll();
         state.mouseSelection.endRow = pos.lineIdx;
         state.mouseSelection.endCol = pos.visCol;
+      } else if (row < 3) {
+        // Above message area → auto-scroll up
+        startDragScroll(1, state, col);
+      } else if (row >= L.sepAbove) {
+        // Below message area → auto-scroll down
+        startDragScroll(-1, state, col);
       }
       return { type: "handled" };
     }
@@ -236,6 +318,7 @@ function handleMouse(key: KeyEvent, state: RenderState): KeyResult {
   // ── Mouse release → finalize drag selection ─────────────────────
   if (key.type === "mouse_up") {
     if (state.mouseSelection && !state.mouseSelection.finalized && button === 0) {
+      stopDragScroll();
       const pos = screenToHistoryPos(row, col, state);
       if (pos) {
         state.mouseSelection.endRow = pos.lineIdx;
@@ -426,7 +509,10 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
   }
 
   // Any keyboard input clears mouse drag selection
-  if (state.mouseSelection) state.mouseSelection = null;
+  if (state.mouseSelection) {
+    stopDragScroll();
+    state.mouseSelection = null;
+  }
 
   // ── Queue prompt modal — intercept all keys when showing ──────
   if (state.queuePrompt) {

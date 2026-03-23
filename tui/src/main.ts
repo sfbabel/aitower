@@ -10,7 +10,7 @@
 
 import { DaemonClient } from "./client";
 import { parseKeys, PasteBuffer, type KeyEvent } from "./input";
-import { handleFocusedKey } from "./focus";
+import { handleFocusedKey, setDragScrollRender } from "./focus";
 import { clearPrompt } from "./promptline";
 import { tryCommand } from "./commands";
 import { expandMacros } from "./macros";
@@ -21,7 +21,7 @@ import { createPendingAI, type ImageAttachment } from "./messages";
 import { handleEvent } from "./events";
 import { confirmQueueMessage, cancelQueuePrompt, clearLocalQueue, removeLocalQueueEntry } from "./queue";
 import { confirmEditMessage, cancelEditMessage } from "./editmessage";
-import { generateTitle, PENDING_TITLE } from "./titlegen";
+import { generateTitle, onResponseComplete, markManualTitle, clearTitleState, PENDING_TITLE } from "./titlegen";
 import { theme } from "./theme";
 import type { Event } from "./protocol";
 
@@ -35,6 +35,9 @@ let streamTickTimer: ReturnType<typeof setTimeout> | null = null;
 let terminalSetUp = false;
 
 // ── Render scheduling ───────────────────────────────────────────────
+
+// Wire drag-scroll auto-render into the main render loop
+setDragScrollRender(() => scheduleRender());
 
 /** Schedule a render on the next frame. Resets the 1s stream tick. */
 function scheduleRender(): void {
@@ -59,18 +62,19 @@ function resetStreamTick(): void {
 function onDaemonEvent(event: Event): void {
   handleEvent(event, state, daemon);
 
-  // Auto-generate title for new conversations
-  if (event.type === "conversation_created" && state.convId) {
-    generateTitle(state.convId, state, daemon, scheduleRender);
-  }
-
-  // Clear stream tick on streaming_stopped
+  // Clear stream tick on streaming_stopped + auto-title
   if (event.type === "streaming_stopped") {
     if (streamTickTimer) { clearTimeout(streamTickTimer); streamTickTimer = null; }
     // Queue shadows are NOT cleared here — the daemon drains one queued
     // message at a time and re-queues the rest. Each consumed message
     // triggers a user_message event, whose handler in events.ts removes
     // the corresponding shadow individually.
+
+    // Auto-generate/regenerate title after AI response completes
+    // (deferred from conversation_created so we have actual context)
+    if (event.convId && event.convId === state.convId) {
+      onResponseComplete(event.convId, state, daemon, scheduleRender);
+    }
   }
 
   scheduleRender();
@@ -102,7 +106,10 @@ function handleSubmit(): void {
           if (state.convId) daemon.setEffort(state.convId, cmdResult.effort);
           break;
         case "rename_conversation":
-          if (state.convId) daemon.renameConversation(state.convId, cmdResult.title);
+          if (state.convId) {
+            daemon.renameConversation(state.convId, cmdResult.title);
+            markManualTitle(state.convId);
+          }
           break;
         case "generate_title":
           if (state.convId) generateTitle(state.convId, state, daemon, scheduleRender);
@@ -235,6 +242,7 @@ function handleKey(key: KeyEvent): void {
     case "delete_conversation":
       daemon.deleteConversation(result.convId);
       clearLocalQueue(state, result.convId);
+      clearTitleState(result.convId);
       // If deleting the current conversation, clear the chat
       if (state.convId === result.convId) {
         state.convId = null;
@@ -251,6 +259,7 @@ function handleKey(key: KeyEvent): void {
       break;
     case "rename_conversation":
       daemon.renameConversation(result.convId, result.title);
+      markManualTitle(result.convId);
       break;
     case "pin_conversation":
       daemon.pinConversation(result.convId, result.pinned);
