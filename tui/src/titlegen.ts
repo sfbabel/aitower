@@ -112,21 +112,17 @@ function extractConversationContext(state: RenderState): string {
     startTotal += chunk.length;
   }
 
-  // Collect from end (reversed, then un-reverse)
+  // Collect from end (reversed, then un-reverse), skipping entries
+  // already captured by the start section to avoid duplication.
+  const startEntryCount = startParts.length;
   const endParts: string[] = [];
   let endTotal = 0;
-  for (let i = allTexts.length - 1; i >= 0; i--) {
+  for (let i = allTexts.length - 1; i >= startEntryCount; i--) {
     const remaining = endBudget - endTotal;
     if (remaining <= 0) break;
     const entry = allTexts[i];
     const label = entry.role === "user" ? "User" : "Assistant";
     const chunk = `${label}: ${entry.text.slice(0, remaining)}`;
-    // Skip if already included in start section
-    if (startTotal < startBudget || i >= allTexts.length - 1) {
-      // Check overlap: if this entry was already fully captured by startParts
-      const startEntryCount = startParts.length;
-      if (i < startEntryCount) continue;
-    }
     endParts.unshift(chunk);
     endTotal += chunk.length;
   }
@@ -203,9 +199,11 @@ export function onResponseComplete(
   const conv = state.sidebar.conversations.find(c => c.id === convId);
   const currentTitle = conv?.title ?? "";
 
-  // Case 1: First response — always generate title
-  // (title is still "pending" from conversation creation)
-  if (currentTitle === PENDING_TITLE || ts.responseCount === 1) {
+  // Case 1: Title is still the placeholder from conversation creation —
+  // generate now that we have the first AI response as context.
+  // Note: we intentionally don't use responseCount === 1 here because
+  // after a TUI restart the count resets and would clobber existing titles.
+  if (currentTitle === PENDING_TITLE) {
     generateTitle(convId, state, daemon, scheduleRender);
     return;
   }

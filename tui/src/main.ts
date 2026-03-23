@@ -72,7 +72,7 @@ function onDaemonEvent(event: Event): void {
 
     // Auto-generate/regenerate title after AI response completes
     // (deferred from conversation_created so we have actual context)
-    if (event.convId && event.convId === state.convId) {
+    if (event.convId === state.convId) {
       onResponseComplete(event.convId, state, daemon, scheduleRender);
     }
   }

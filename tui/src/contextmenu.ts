@@ -2,7 +2,8 @@
  * Right-click context menu.
  *
  * Handles key/mouse events and rendering for the dropdown
- * that appears when right-clicking a sidebar conversation.
+ * that appears when right-clicking sidebar conversations or
+ * the message area.
  */
 
 import type { KeyEvent } from "./input";
@@ -22,6 +23,35 @@ export function buildSidebarMenu(conv: ConversationSummary): ContextMenuItem[] {
     { label: "Clone", action: "clone" },
     { label: "Delete", action: "delete" },
   ];
+}
+
+/** Build menu items for a right-click in the message area. */
+export function buildMessageMenu(hasSelection: boolean): ContextMenuItem[] {
+  const items: ContextMenuItem[] = [];
+  if (hasSelection) {
+    items.push({ label: "Copy selection", action: "copy_selection" });
+  }
+  items.push({ label: "Copy word", action: "copy_word" });
+  items.push({ label: "Copy line", action: "copy_line" });
+  items.push({ label: "Copy message", action: "copy_message" });
+  return items;
+}
+
+/**
+ * Clamp menu anchor position so the box fits on screen.
+ * Call this when creating a ContextMenuState to ensure the
+ * hit-test coordinates match the rendered position.
+ */
+export function clampMenuPosition(
+  menu: ContextMenuState,
+  rows: number,
+  cols: number,
+): void {
+  const innerWidth = Math.max(...menu.items.map(i => i.label.length)) + 4;
+  const boxWidth = innerWidth + 2;
+  const boxHeight = menu.items.length + 2;
+  if (menu.row + boxHeight > rows) menu.row = Math.max(1, rows - boxHeight);
+  if (menu.col + boxWidth > cols) menu.col = Math.max(1, cols - boxWidth);
 }
 
 // ── Key handling ────────────────────────────────────────────────────
@@ -47,6 +77,17 @@ export function handleContextMenuKey(key: KeyEvent, state: RenderState): Context
     }
     // Click outside menu → cancel
     return { type: "cancel" };
+  }
+
+  // Mouse hover → highlight menu items
+  if (key.type === "mouse_move" && key.row && key.col) {
+    const menuWidth = Math.max(...menu.items.map(i => i.label.length)) + 6;
+    const itemRow = key.row - (menu.row + 1);
+    if (itemRow >= 0 && itemRow < menu.items.length
+        && key.col >= menu.col && key.col < menu.col + menuWidth) {
+      menu.selection = itemRow;
+    }
+    return { type: "handled" };
   }
 
   // Mouse release/scroll → ignore

@@ -65,8 +65,16 @@ export interface ContextMenuState {
   selection: number;
   row: number;        // screen anchor (1-based)
   col: number;        // screen anchor (1-based)
+  /** Where the menu was triggered from. */
+  source: "sidebar" | "message";
+  // Sidebar context (source === "sidebar")
   convId: string;     // conversation this menu targets
   convIdx: number;    // sidebar index
+  // Message context (source === "message")
+  /** History line index where right-click occurred. */
+  lineIdx: number;
+  /** Visible column where right-click occurred. */
+  visCol: number;
 }
 
 /** Mouse drag selection in the message area. */

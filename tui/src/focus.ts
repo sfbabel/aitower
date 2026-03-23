@@ -33,13 +33,14 @@ import {
   handleHistoryFind as historyFindHandler,
   handleHistoryTextObject as historyTextObjectHandler,
   handleHistoryCursorAction,
+  joinLogicalLines, logicalLineRange,
   scrollHalfPageWithCursor, scrollFullPageWithCursor, scrollLineWithStickyCursor,
 } from "./historycursor";
 import { handleMessageTextObject } from "./vim/message";
 import { dismissAutocomplete } from "./autocomplete";
 import { handleQueuePromptKey } from "./queue";
 import { handleEditMessageKey, openEditMessageModal } from "./editmessage";
-import { handleContextMenuKey, buildSidebarMenu } from "./contextmenu";
+import { handleContextMenuKey, buildSidebarMenu, buildMessageMenu, clampMenuPosition } from "./contextmenu";
 import { PROMPT_PREFIX_LEN } from "./render";
 import { readClipboardImage } from "./clipboard";
 import type { MouseSelection } from "./state";
@@ -384,9 +385,13 @@ function handleMouse(key: KeyEvent, state: RenderState): KeyResult {
         items: buildSidebarMenu(conv),
         selection: 0,
         row, col,
+        source: "sidebar",
         convId: conv.id,
         convIdx,
+        lineIdx: 0,
+        visCol: 0,
       };
+      clampMenuPosition(state.contextMenu, state.rows, state.cols);
       return { type: "handled" };
     }
 
@@ -401,20 +406,20 @@ function handleMouse(key: KeyEvent, state: RenderState): KeyResult {
   if (inMessages) {
     const pos = screenToHistoryPos(row, col, state);
 
-    // Right-click → copy selection or word
+    // Right-click → open context menu
     if (button === 2) {
-      if (state.mouseSelection) {
-        // Copy the drag selection
-        const text = getMouseSelectionText(state.mouseSelection, state);
-        if (text.trim()) copyToClipboard(text);
-        state.mouseSelection = null;
-      } else if (pos) {
-        // No selection → copy word under cursor
-        const plain = stripAnsi(state.historyLines[pos.lineIdx] ?? "");
-        const [wStart, wEnd] = wordBoundsAt(plain, pos.visCol);
-        const word = plain.slice(wStart, wEnd + 1).trim();
-        if (word) copyToClipboard(word);
-      }
+      const hasSelection = state.mouseSelection !== null;
+      state.contextMenu = {
+        items: buildMessageMenu(hasSelection),
+        selection: 0,
+        row, col,
+        source: "message",
+        convId: state.convId ?? "",
+        convIdx: -1,
+        lineIdx: pos?.lineIdx ?? 0,
+        visCol: pos?.visCol ?? 0,
+      };
+      clampMenuPosition(state.contextMenu, state.rows, state.cols);
       return { type: "handled" };
     }
 
@@ -463,24 +468,68 @@ function handleMouse(key: KeyEvent, state: RenderState): KeyResult {
 
 function executeContextMenuAction(action: string, state: RenderState): KeyResult {
   const menu = state.contextMenu!;
-  const convId = menu.convId;
-  const convIdx = menu.convIdx;
   state.contextMenu = null; // close menu
 
-  // Ensure sidebar selection is on the target conversation
-  state.sidebar.selectedIndex = convIdx;
-  state.sidebar.selectedId = convId;
+  // ── Sidebar context menu actions ──────────────────────────────
+  if (menu.source === "sidebar") {
+    const convId = menu.convId;
+    const convIdx = menu.convIdx;
+    state.sidebar.selectedIndex = convIdx;
+    state.sidebar.selectedId = convId;
+
+    switch (action) {
+      case "pin":
+        return mapSidebarResult(handleSidebarAction("pin", state.sidebar), state);
+      case "mark":
+        return mapSidebarResult(handleSidebarAction("mark", state.sidebar), state);
+      case "clone":
+        return { type: "clone_conversation", convId };
+      case "delete":
+        return { type: "delete_conversation", convId };
+      default:
+        return { type: "handled" };
+    }
+  }
+
+  // ── Message area context menu actions ─────────────────────────
+  const lineIdx = menu.lineIdx;
+  const visCol = menu.visCol;
+  const lines = state.historyLines;
+  const wrapCont = state.historyWrapContinuation;
 
   switch (action) {
-    case "pin":
-      return mapSidebarResult(handleSidebarAction("pin", state.sidebar), state);
-    case "mark":
-      return mapSidebarResult(handleSidebarAction("mark", state.sidebar), state);
-    case "clone":
-      return { type: "clone_conversation", convId };
-    case "delete":
-      // Context menu click = clear intent to delete, skip the d-d confirmation
-      return { type: "delete_conversation", convId };
+    case "copy_selection": {
+      if (state.mouseSelection) {
+        const text = getMouseSelectionText(state.mouseSelection, state);
+        if (text.trim()) copyToClipboard(text);
+        state.mouseSelection = null;
+      }
+      return { type: "handled" };
+    }
+    case "copy_word": {
+      const plain = stripAnsi(lines[lineIdx] ?? "");
+      const [wStart, wEnd] = wordBoundsAt(plain, visCol);
+      const word = plain.slice(wStart, wEnd + 1).trim();
+      if (word) copyToClipboard(word);
+      return { type: "handled" };
+    }
+    case "copy_line": {
+      // Copy the full logical line (joining wrap continuations)
+      const { first, last } = logicalLineRange(lineIdx, wrapCont);
+      const text = joinLogicalLines(lines, wrapCont, first, last);
+      if (text.trim()) copyToClipboard(text);
+      return { type: "handled" };
+    }
+    case "copy_message": {
+      // Find which message block this line belongs to
+      const bounds = state.historyMessageBounds;
+      const msgBound = bounds.find(b => lineIdx >= b.start && lineIdx < b.end);
+      if (msgBound) {
+        const text = joinLogicalLines(lines, wrapCont, msgBound.start, msgBound.contentEnd - 1);
+        if (text.trim()) copyToClipboard(text);
+      }
+      return { type: "handled" };
+    }
     default:
       return { type: "handled" };
   }
