@@ -10,7 +10,7 @@ export { MAX_CONTEXT } from "@aitower/shared/messages";
 export const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
 
 /** Target context size after cleanup — pressure hints tell the AI to free tokens until it reaches this. */
-export const CONTEXT_TARGET = 100_000;
+export const CONTEXT_TARGET = 200_000;
 
 /**
  * After this many seconds a bash tool call is "backgrounded": the process

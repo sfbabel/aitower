@@ -110,6 +110,12 @@ function renderImageIndicator(images: ImageAttachment[], width: number): string 
 }
 
 export function render(state: RenderState): void {
+  // Re-read terminal size in case it changed between events
+  const liveCols = process.stdout.columns;
+  const liveRows = process.stdout.rows;
+  if (liveCols && liveCols !== state.cols) state.cols = liveCols;
+  if (liveRows && liveRows !== state.rows) state.rows = liveRows;
+
   const { cols, rows } = state;
   const out: string[] = [];
 
@@ -121,7 +127,8 @@ export function render(state: RenderState): void {
     : (line: string) => line;
 
   // ── Layout dimensions ─────────────────────────────────────────
-  const sidebarOpen = state.sidebar.open;
+  // Auto-close sidebar if terminal is too narrow to fit it
+  const sidebarOpen = state.sidebar.open && cols > SIDEBAR_WIDTH + 20;
   const sidebarW = sidebarOpen ? SIDEBAR_WIDTH : 0;
   const chatCol = sidebarW + 1;            // 1-based column where chat starts
   const chatW = Math.max(1, cols - sidebarW); // width available for chat area
@@ -160,8 +167,8 @@ export function render(state: RenderState): void {
 
   // ── Input line wrapping ────────────────────────────────────────
   const promptLen = PROMPT_PREFIX_LEN;
-  const maxInputWidth = chatW - promptLen;
-  const maxInputRows = Math.min(10, Math.floor((rows - 6) / 2));
+  const maxInputWidth = Math.max(1, chatW - promptLen);
+  const maxInputRows = Math.max(1, Math.min(10, Math.floor((rows - 6) / 2)));
 
   const { lines: inputLines, isNewLine, cursorLine, cursorCol, scrollOffset: newPromptScroll } =
     getInputLines(state.inputBuffer, state.cursorPos, maxInputWidth, maxInputRows, state.promptScrollOffset);
@@ -178,7 +185,7 @@ export function render(state: RenderState): void {
   const statusLines = statusResult.lines;
   const imageIndicatorRows = state.pendingImages.length > 0 ? 1 : 0;
   const bottomUsed = 1 + imageIndicatorRows + inputRowCount + 1 + slHeight;
-  const sepAbove = rows - bottomUsed + 1;
+  const sepAbove = Math.max(MSG_AREA_START, rows - bottomUsed + 1);
   const firstInputRow = sepAbove + 1 + imageIndicatorRows;
   const sepBelow = firstInputRow + inputRowCount;
 
@@ -187,7 +194,7 @@ export function render(state: RenderState): void {
   const promptColor = promptFocused ? theme.accent : theme.dim;
 
   // ── Message area (rows MSG_AREA_START to sepAbove-1) ────────────
-  const messageAreaHeight = sepAbove - MSG_AREA_START;
+  const messageAreaHeight = Math.max(0, sepAbove - MSG_AREA_START);
   const { lines: allLines, messageBounds, wrapContinuation } = buildMessageLines(state, chatW);
   const totalLines = allLines.length;
 
@@ -402,6 +409,7 @@ export function render(state: RenderState): void {
 
   for (let i = 0; i < inputRowCount; i++) {
     const row = firstInputRow + i;
+    if (row > rows) break; // don't write past terminal bottom
     const promptGlyph = (i === 0 && !isNewLine[i]) ? ">" : "+";
     const promptStyle = promptFocused ? theme.accent : theme.dim;
 
@@ -433,15 +441,18 @@ export function render(state: RenderState): void {
   }
 
   // ── Separator below input ─────────────────────────────────────
-  out.push(move_to(sepBelow, 1) + cl);
-  if (sidebarOpen && sbRows[sepBelow - 1]) {
-    out.push(sbRows[sepBelow - 1]);
+  if (sepBelow <= rows) {
+    out.push(move_to(sepBelow, 1) + cl);
+    if (sidebarOpen && sbRows[sepBelow - 1]) {
+      out.push(sbRows[sepBelow - 1]);
+    }
+    out.push(move_to(sepBelow, chatCol) + bgLine(`${promptColor}${"─".repeat(chatW)}${theme.reset}`));
   }
-  out.push(move_to(sepBelow, chatCol) + bgLine(`${promptColor}${"─".repeat(chatW)}${theme.reset}`));
 
   // ── Status lines (chat area width) ─────────────────────────────
   for (let i = 0; i < slHeight; i++) {
     const row = sepBelow + 1 + i;
+    if (row > rows) break; // don't write past terminal bottom
     out.push(move_to(row, 1) + cl);
     if (sidebarOpen && sbRows[row - 1]) {
       out.push(sbRows[row - 1]);

@@ -31,7 +31,8 @@ const SUPPORTED_MEDIA_TYPES: Record<string, string> = {
 };
 
 const MAX_BASE64_BYTES = 5 * 1024 * 1024;
-const RECOMMENDED_MAX_PX = 1568;
+/** Many-image API limit: no dimension may exceed 2000px. */
+const MAX_DIMENSION_PX = 2000;
 const COMPRESSION_QUALITIES = [85, 60, 40];
 
 function getExtension(filePath: string): string {
@@ -61,7 +62,7 @@ async function compressImage(
   try {
     for (const quality of COMPRESSION_QUALITIES) {
       const proc = Bun.spawn(
-        ["magick", filePath, "-resize", `${RECOMMENDED_MAX_PX}x${RECOMMENDED_MAX_PX}>`, "-quality", quality.toString(), tmpOut],
+        ["magick", filePath, "-resize", `${MAX_DIMENSION_PX}x${MAX_DIMENSION_PX}>`, "-quality", quality.toString(), tmpOut],
         { stdout: "pipe", stderr: "pipe" },
       );
       const stderr = await new Response(proc.stderr).text();
@@ -94,6 +95,26 @@ async function compressImage(
 
 // ── Image file reading ─────────────────────────────────────────────
 
+/** Use ImageMagick `identify` to get image dimensions. Returns null on failure. */
+async function getImageDimensions(filePath: string): Promise<{ width: number; height: number } | null> {
+  try {
+    const proc = Bun.spawn(
+      ["magick", "identify", "-format", "%w %h", filePath],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    const stdout = await new Response(proc.stdout).text();
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) return null;
+    // For animated images, identify may output multiple frames — take the first line
+    const firstLine = stdout.trim().split("\n")[0];
+    const [w, h] = firstLine.split(" ").map(Number);
+    if (Number.isFinite(w) && Number.isFinite(h)) return { width: w, height: h };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function readImageFile(filePath: string): Promise<ToolResult> {
   try {
     const file = Bun.file(filePath);
@@ -104,25 +125,35 @@ async function readImageFile(filePath: string): Promise<ToolResult> {
     const base64 = Buffer.from(rawBytes).toString("base64");
     const ext = getExtension(filePath);
 
-    let mediaType = SUPPORTED_MEDIA_TYPES[ext];
+    const mediaType = SUPPORTED_MEDIA_TYPES[ext];
 
-    if (base64.length <= MAX_BASE64_BYTES && mediaType) {
+    // Check if we need compression: either too large in bytes, unsupported
+    // format, or any dimension exceeds the many-image API limit (2000px).
+    const dims = await getImageDimensions(filePath);
+    const oversized = dims != null && (dims.width > MAX_DIMENSION_PX || dims.height > MAX_DIMENSION_PX);
+
+    if (base64.length <= MAX_BASE64_BYTES && mediaType && !oversized) {
       return {
-        output: `Read image: ${filePath} (${formatMB(sizeBytes)} MB)`,
+        output: `Read image: ${filePath} (${formatMB(sizeBytes)} MB${dims ? `, ${dims.width}×${dims.height}` : ""})`,
         isError: false,
         image: { mediaType, base64 },
       };
     }
 
-    // Need compression
-    log("info", `readImageFile: ${filePath} needs compression (base64: ${formatMB(base64.length)} MB, format: ${ext})`);
+    // Need compression / resize
+    const reason = oversized
+      ? `dimensions ${dims!.width}×${dims!.height} exceed ${MAX_DIMENSION_PX}px limit`
+      : `base64 size ${formatMB(base64.length)} MB`;
+    log("info", `readImageFile: ${filePath} needs compression (${reason}, format: ${ext})`);
     const result = await compressImage(filePath, base64.length);
 
     if ("error" in result) {
       return { output: result.error, isError: true };
     }
 
-    const compressionNote = `, compressed from ${formatMB(sizeBytes)} MB`;
+    const compressionNote = oversized
+      ? `, resized from ${dims!.width}×${dims!.height}`
+      : `, compressed from ${formatMB(sizeBytes)} MB`;
     return {
       output: `Read image: ${filePath} (${formatMB(result.compressedBytes)} MB${compressionNote})`,
       isError: false,

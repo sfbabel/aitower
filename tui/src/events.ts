@@ -374,6 +374,7 @@ export function handleEvent(
 
     case "tools_available": {
       state.toolRegistry = event.tools;
+      state.externalToolStyles = event.externalToolStyles ?? [];
       break;
     }
 
@@ -394,6 +395,11 @@ export function handleEvent(
       if (event.openUrl) {
         Bun.spawn(["xdg-open", event.openUrl], { stdout: "ignore", stderr: "ignore" }).unref();
       }
+      break;
+    }
+
+    case "system_prompt": {
+      state.messages.push({ role: "system", text: event.systemPrompt, metadata: null });
       break;
     }
 

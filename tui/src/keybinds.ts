@@ -63,6 +63,7 @@ export type Action =
   // Conversation
   | "new_conversation"
   | "edit_message"
+  | "search"
   // Display toggles
   | "toggle_tool_output"
   // Sidebar navigation (from any panel)
@@ -87,7 +88,9 @@ export type Action =
   | "history_gg"
   | "history_G"
   | "history_yy"
-  | "history_visual_yank";
+  | "history_visual_yank"
+  | "history_prev_message"
+  | "history_next_message";
 
 // ── Keybind map ─────────────────────────────────────────────────────
 

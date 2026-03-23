@@ -24,7 +24,7 @@ import {
   scrollPageUp, scrollPageDown,
   scrollToTop, scrollToBottom,
 } from "./chat";
-import { handleSidebarKey, handleSidebarAction, handleSidebarMark, moveSelection, syncSelectedIndex, sidebarHitTest, type SidebarKeyResult } from "./sidebar";
+import { handleSidebarKey, handleSidebarAction, handleSidebarMark, moveSelection, syncSelectedIndex, sidebarHitTest, handleSearchKey, openSearch, closeSearch, type SidebarKeyResult } from "./sidebar";
 import { processKey, copyToClipboard, pasteFromClipboard, type VimContext } from "./vim";
 import { clampNormal } from "./vim/buffer";
 import { pushUndo, markInsertEntry, commitInsertSession, undo as undoFn, redo as redoFn } from "./undo";
@@ -77,6 +77,7 @@ function focusChat(state: RenderState): void {
   state.chatFocus = "prompt";
   state.sidebar.open = false;
   state.vim.mode = "normal";
+  if (state.sidebar.searchActive) closeSearch(state.sidebar);
 }
 
 /** Toggle sidebar open/close, sync focus and selection. */
@@ -89,6 +90,8 @@ function toggleSidebar(state: RenderState): void {
       state.sidebar.selectedId = state.convId;
       syncSelectedIndex(state.sidebar);
     }
+  } else {
+    if (state.sidebar.searchActive) closeSearch(state.sidebar);
   }
 }
 
@@ -191,6 +194,13 @@ function handleMouse(key: KeyEvent, state: RenderState): KeyResult {
 
   // ── Sidebar clicks ──────────────────────────────────────────────
   if (inSidebar) {
+    // Click on search bar (last row of sidebar) → activate search
+    if (row >= state.rows - 1 && button === 0) {
+      state.panelFocus = "sidebar";
+      if (!state.sidebar.searchActive) openSearch(state.sidebar);
+      return { type: "handled" };
+    }
+
     const convIdx = sidebarHitTest(row, state.sidebar);
     if (convIdx === null) return { type: "handled" };
 
@@ -377,6 +387,16 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
   if (state.mouseSelection) {
     stopDragScroll();
     state.mouseSelection = null;
+  }
+
+  // ── Sidebar search — intercept keys while search input is active ──
+  if (state.sidebar.searchActive && state.panelFocus === "sidebar") {
+    const sr = handleSearchKey(key, state.sidebar);
+    if (sr.type === "select") {
+      focusChat(state);
+      return { type: "load_conversation", convId: sr.convId };
+    }
+    return { type: "handled" };
   }
 
   // ── Queue prompt modal — intercept all keys when showing ──────
@@ -674,6 +694,11 @@ function handleVimAction(action: string, state: RenderState): KeyResult {
       return { type: "handled" };
     case "new_conversation":
       return { type: "new_conversation" };
+    case "search":
+      if (state.panelFocus === "sidebar") {
+        openSearch(state.sidebar);
+      }
+      return { type: "handled" };
     case "focus_prompt":
       // Vim i/a in sidebar/history → focus prompt + enter insert
       state.vim.mode = "insert";

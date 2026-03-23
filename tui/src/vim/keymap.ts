@@ -83,6 +83,10 @@ const KEYMAP: KeymapEntry[] = [
   { mode: "normal", context: "history", key: "gg", command: { type: "action", action: "history_gg" } },
   { mode: "normal", context: "history", key: "G",  command: { type: "action", action: "history_G" } },
 
+  // Message navigation
+  { mode: "normal", context: "history", key: "{",  command: { type: "action", action: "history_prev_message" } },
+  { mode: "normal", context: "history", key: "}",  command: { type: "action", action: "history_next_message" } },
+
   // Yank
   { mode: "normal", context: "history", key: "y",  command: { type: "operator", name: "yank" } },
   { mode: "normal", context: "history", key: "yy", command: { type: "action", action: "history_yy" } },
@@ -116,6 +120,7 @@ const KEYMAP: KeymapEntry[] = [
   { mode: "normal", context: "*", key: "q",  command: { type: "action", action: "abort" } },
   { mode: "normal", context: "*", key: "n",  command: { type: "action", action: "new_conversation" } },
   { mode: "normal", context: "*", key: "Q",  command: { type: "action", action: "quit" } },
+  { mode: "normal", context: "sidebar", key: "/",  command: { type: "action", action: "search" } },
 
   // ── Visual mode: enter from normal ─────────────────────────────
   { mode: "normal", context: "prompt",  key: "v",  command: { type: "mode_change", mode: "visual" } },
@@ -159,6 +164,8 @@ const KEYMAP: KeymapEntry[] = [
   { mode: "visual", context: "history", key: "$",  command: { type: "action", action: "history_dollar" } },
   { mode: "visual", context: "history", key: "gg", command: { type: "action", action: "history_gg" } },
   { mode: "visual", context: "history", key: "G",  command: { type: "action", action: "history_G" } },
+  { mode: "visual", context: "history", key: "{",  command: { type: "action", action: "history_prev_message" } },
+  { mode: "visual", context: "history", key: "}",  command: { type: "action", action: "history_next_message" } },
   { mode: "visual", context: "history", key: "y",  command: { type: "action", action: "history_visual_yank" } },
 
   // ── Visual-line mode: same as visual but for line selection ─────
@@ -176,6 +183,8 @@ const KEYMAP: KeymapEntry[] = [
   { mode: "visual-line", context: "history", key: "k",  command: { type: "action", action: "history_up" } },
   { mode: "visual-line", context: "history", key: "gg", command: { type: "action", action: "history_gg" } },
   { mode: "visual-line", context: "history", key: "G",  command: { type: "action", action: "history_G" } },
+  { mode: "visual-line", context: "history", key: "{",  command: { type: "action", action: "history_prev_message" } },
+  { mode: "visual-line", context: "history", key: "}",  command: { type: "action", action: "history_next_message" } },
   { mode: "visual-line", context: "history", key: "y",  command: { type: "action", action: "history_visual_yank" } },
 
   // ── Insert mode: only Esc is captured ────────────────────────────

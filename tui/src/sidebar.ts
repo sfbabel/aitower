@@ -26,6 +26,10 @@ export interface SidebarState {
   scrollOffset: number;
   pendingDeleteId: string | null;
   hoveredIndex: number | null;
+  // Search
+  searchActive: boolean;
+  searchQuery: string;
+  searchFiltered: number[];  // indices into conversations[] that match
 }
 
 export function createSidebarState(): SidebarState {
@@ -37,6 +41,9 @@ export function createSidebarState(): SidebarState {
     scrollOffset: 0,
     pendingDeleteId: null,
     hoveredIndex: null,
+    searchActive: false,
+    searchQuery: "",
+    searchFiltered: [],
   };
 }
 
@@ -161,6 +168,14 @@ export function handleSidebarAction(action: string, sidebar: SidebarState): Side
       const tmp = conv.sortOrder;
       conv.sortOrder = target.sortOrder;
       target.sortOrder = tmp;
+      // If sortOrders were equal the swap is a no-op — differentiate them
+      if (conv.sortOrder === target.sortOrder) {
+        if (direction === "up") {
+          conv.sortOrder -= 0.5;
+        } else {
+          conv.sortOrder += 0.5;
+        }
+      }
       // Follow the moved item
       sidebar.selectedIndex = targetIdx;
       sidebar.selectedId = conv.id;
@@ -298,6 +313,99 @@ export function sidebarHitTest(screenRow: number, sidebar: SidebarState): number
   return null;
 }
 
+// ── Search ──────────────────────────────────────────────────────────
+
+/** Update the filtered indices based on the current query. */
+export function updateSearchFilter(sidebar: SidebarState): void {
+  const q = sidebar.searchQuery.toLowerCase();
+  if (!q) {
+    sidebar.searchFiltered = sidebar.conversations.map((_, i) => i);
+  } else {
+    sidebar.searchFiltered = [];
+    for (let i = 0; i < sidebar.conversations.length; i++) {
+      const title = convDisplayName(sidebar.conversations[i]).toLowerCase();
+      if (title.includes(q)) {
+        sidebar.searchFiltered.push(i);
+      }
+    }
+  }
+  // Reset selection to first match
+  if (sidebar.searchFiltered.length > 0) {
+    sidebar.selectedIndex = sidebar.searchFiltered[0];
+    sidebar.selectedId = sidebar.conversations[sidebar.selectedIndex]?.id ?? null;
+  }
+  sidebar.scrollOffset = 0;
+}
+
+/** Open search mode. */
+export function openSearch(sidebar: SidebarState): void {
+  sidebar.searchActive = true;
+  sidebar.searchQuery = "";
+  sidebar.searchFiltered = sidebar.conversations.map((_, i) => i);
+}
+
+/** Close search mode and restore full list. */
+export function closeSearch(sidebar: SidebarState): void {
+  sidebar.searchActive = false;
+  sidebar.searchQuery = "";
+  sidebar.searchFiltered = [];
+}
+
+export type SearchKeyResult =
+  | { type: "handled" }
+  | { type: "select"; convId: string }
+  | { type: "cancel" };
+
+/** Handle keys while search is active. */
+export function handleSearchKey(key: KeyEvent, sidebar: SidebarState): SearchKeyResult {
+  switch (key.type) {
+    case "char":
+      sidebar.searchQuery += key.char ?? "";
+      updateSearchFilter(sidebar);
+      return { type: "handled" };
+    case "backspace":
+      if (sidebar.searchQuery.length > 0) {
+        sidebar.searchQuery = sidebar.searchQuery.slice(0, -1);
+        updateSearchFilter(sidebar);
+      } else {
+        closeSearch(sidebar);
+      }
+      return { type: "handled" };
+    case "escape":
+    case "ctrl-c":
+      closeSearch(sidebar);
+      return { type: "cancel" };
+    case "enter": {
+      const conv = sidebar.conversations[sidebar.selectedIndex];
+      closeSearch(sidebar);
+      if (conv) return { type: "select", convId: conv.id };
+      return { type: "cancel" };
+    }
+    case "down":
+    case "tab": {
+      // Move to next match
+      const curPos = sidebar.searchFiltered.indexOf(sidebar.selectedIndex);
+      if (curPos >= 0 && curPos < sidebar.searchFiltered.length - 1) {
+        sidebar.selectedIndex = sidebar.searchFiltered[curPos + 1];
+        sidebar.selectedId = sidebar.conversations[sidebar.selectedIndex]?.id ?? null;
+      }
+      return { type: "handled" };
+    }
+    case "up":
+    case "backtab": {
+      // Move to previous match
+      const curPos = sidebar.searchFiltered.indexOf(sidebar.selectedIndex);
+      if (curPos > 0) {
+        sidebar.selectedIndex = sidebar.searchFiltered[curPos - 1];
+        sidebar.selectedId = sidebar.conversations[sidebar.selectedIndex]?.id ?? null;
+      }
+      return { type: "handled" };
+    }
+    default:
+      return { type: "handled" };
+  }
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────
 
 /** Pad or truncate a string to exactly `width` visible characters. */
@@ -319,19 +427,37 @@ export function renderSidebar(
   const borderFg = focused ? theme.borderFocused : theme.borderUnfocused;
   const borderBg = theme.appBg ?? '';
 
-  // Row 1: header
-  const header = " Conversations";
-  rows.push(
-    theme.sidebarBg + theme.text + theme.bold +
-    pad(header, innerWidth) +
-    theme.reset + borderBg + borderFg + "│" + theme.reset,
-  );
+  // Row 1: header or search input
+  if (sidebar.searchActive) {
+    const prefix = " / ";
+    const maxQ = innerWidth - prefix.length;
+    const query = sidebar.searchQuery.length > maxQ
+      ? sidebar.searchQuery.slice(-maxQ) : sidebar.searchQuery;
+    const cursor = focused ? theme.accent + "█" + theme.reset + theme.sidebarBg + theme.text : "";
+    const searchLine = prefix + query + cursor;
+    const visLen = prefix.length + query.length + (focused ? 1 : 0);
+    rows.push(
+      theme.sidebarBg + theme.accent + pad(searchLine, innerWidth + (searchLine.length - visLen)) +
+      theme.reset + borderBg + borderFg + "│" + theme.reset,
+    );
+  } else {
+    const header = " Conversations";
+    rows.push(
+      theme.sidebarBg + theme.text + theme.bold +
+      pad(header, innerWidth) +
+      theme.reset + borderBg + borderFg + "│" + theme.reset,
+    );
+  }
 
   // Row 2: separator with ┤ junction
   rows.push(
     theme.sidebarBg + borderFg +
     "─".repeat(innerWidth) + borderBg + "┤" + theme.reset,
   );
+
+  // Filter conversations when searching
+  const filterSet = sidebar.searchActive && sidebar.searchFiltered.length < sidebar.conversations.length
+    ? new Set(sidebar.searchFiltered) : null;
 
   // Build display rows: section labels + delimiter + conversation entries
   const convs = sidebar.conversations;
@@ -344,15 +470,22 @@ export function renderSidebar(
   }
   const displayRows: DisplayRow[] = [];
 
-  if (pinnedCount > 0) {
+  if (pinnedCount > 0 && !filterSet) {
     displayRows.push({ type: "label", text: " Pinned" });
     for (let i = 0; i < pinnedCount; i++) {
       displayRows.push({ type: "entry", convIdx: i });
     }
     displayRows.push({ type: "delimiter" });
   }
-  for (let i = pinnedCount; i < convs.length; i++) {
-    displayRows.push({ type: "entry", convIdx: i });
+  if (filterSet) {
+    // Search active — show only matching entries, flat list
+    for (const i of sidebar.searchFiltered) {
+      displayRows.push({ type: "entry", convIdx: i });
+    }
+  } else {
+    for (let i = pinnedCount; i < convs.length; i++) {
+      displayRows.push({ type: "entry", convIdx: i });
+    }
   }
 
   // Map selectedIndex (into convs[]) to display row index for scroll tracking
@@ -453,6 +586,27 @@ export function renderSidebar(
       theme.reset + borderBg + borderFg + "│" + theme.reset,
     );
   }
+
+  // ── Bottom search bar (always visible) ────────────────────────
+  // Trim list rows to make room, then append separator + search
+  const searchRows = 2; // separator + input
+  while (rows.length > totalRows - searchRows) rows.pop();
+
+  // Separator
+  rows.push(
+    theme.sidebarBg + borderFg +
+    "─".repeat(innerWidth) + borderBg + "┤" + theme.reset,
+  );
+
+  // Search input / status
+  const searchLabel = sidebar.searchActive
+    ? ` ${sidebar.searchFiltered.length} match${sidebar.searchFiltered.length === 1 ? "" : "es"}`
+    : " 🔍 Search…";
+  rows.push(
+    theme.sidebarBg + theme.muted +
+    pad(searchLabel, innerWidth) +
+    theme.reset + borderBg + borderFg + "│" + theme.reset,
+  );
 
   return rows;
 }

@@ -123,6 +123,9 @@ function handleSubmit(): void {
             process.stdout.write(set_cursor_color(theme.cursorColor));
           }
           break;
+        case "get_system_prompt":
+          daemon.getSystemPrompt();
+          break;
         case "login":
           daemon.login();
           break;
@@ -332,13 +335,54 @@ async function main(): Promise<void> {
   // aren't split into individual keystrokes (which turns newlines into submits).
   const pasteBuffer = new PasteBuffer(processInput);
 
-  function processInput(str: string): void {
+  // ── Escape disambiguator ──────────────────────────────────────
+  // A trailing ESC (0x1b) in a stdin chunk could be either a real
+  // Escape press or the start of a CSI sequence split across chunks.
+  // Buffer it briefly — if the next chunk starts with '[', it was
+  // a CSI prefix. Otherwise flush it as a real Escape.
+  let pendingEsc = false;
+  let escTimer: ReturnType<typeof setTimeout> | null = null;
+  const ESC_TIMEOUT = 50; // ms — long enough for next chunk, short enough to feel instant
+
+  function flushPendingEsc(): void {
+    if (pendingEsc) {
+      pendingEsc = false;
+      if (escTimer) { clearTimeout(escTimer); escTimer = null; }
+      processKeys("\x1b");
+    }
+  }
+
+  function processKeys(str: string): void {
     const keys = parseKeys(str);
     for (const key of keys) {
       handleKey(key);
       if (!running) break;
     }
     if (!running) cleanup();
+  }
+
+  function processInput(str: string): void {
+    // If we had a pending ESC and new data starts with '[', rejoin them
+    if (pendingEsc && str.startsWith("[")) {
+      pendingEsc = false;
+      if (escTimer) { clearTimeout(escTimer); escTimer = null; }
+      str = "\x1b" + str;
+    } else if (pendingEsc) {
+      // New data doesn't continue a CSI — flush the pending ESC first
+      flushPendingEsc();
+    }
+
+    // Check if this chunk ends with a bare ESC
+    if (str.endsWith("\x1b") && str.length > 0) {
+      // Strip the trailing ESC and defer it
+      const rest = str.slice(0, -1);
+      if (rest.length > 0) processKeys(rest);
+      pendingEsc = true;
+      escTimer = setTimeout(flushPendingEsc, ESC_TIMEOUT);
+      return;
+    }
+
+    processKeys(str);
   }
 
   process.stdin.on("data", (data: Buffer) => {
@@ -357,6 +401,20 @@ function cleanup(): void {
 process.on("exit", () => restoreTerminal());
 process.on("SIGINT", cleanup);
 process.on("SIGTERM", cleanup);
+process.on("SIGHUP", cleanup);
+
+// Catch crashes — always restore terminal so we don't leave
+// kitty keyboard protocol / mouse mode enabled system-wide
+process.on("uncaughtException", (err) => {
+  restoreTerminal();
+  console.error(`\nUncaught exception: ${err.message}\n${err.stack}`);
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  restoreTerminal();
+  console.error(`\nUnhandled rejection: ${reason}`);
+  process.exit(1);
+});
 
 main().catch((err) => {
   restoreTerminal();

@@ -5,7 +5,7 @@
  * This is the sole point of contact with the Anthropic API.
  */
 
-import { randomBytes, randomUUID } from "crypto";
+import { createHash, randomBytes, randomUUID } from "crypto";
 import { loadAuth, isTokenExpired, saveAuth } from "./store";
 import { refreshTokens, AuthError } from "./auth";
 import { injectToolBreakpoints, injectMessageBreakpoints } from "./cache";
@@ -23,10 +23,33 @@ const API_VERSION = "2023-06-01";
 // custom name (e.g. "aitower/0.1.0") causes consistent load shedding
 // (overloaded_error). Update these when Claude Code releases a new version.
 // See reference/api-request-identity.md for the full story.
-const CLAUDE_CODE_VERSION = "2.1.76";
+const CLAUDE_CODE_VERSION = "2.1.77";
 const CLAUDE_CODE_USER_AGENT = `claude-code/${CLAUDE_CODE_VERSION}`;
-const BETA_FLAGS = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,prompt-caching-scope-2026-01-05,effort-2025-11-24";
-const BILLING_HEADER = `x-anthropic-billing-header: cc_version=${CLAUDE_CODE_VERSION}; cc_entrypoint=cli;`;
+const BETA_FLAGS = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,prompt-caching-scope-2026-01-05,effort-2025-11-24,adaptive-thinking-2026-01-28";
+const BILLING_SALT = "59cf53e54c78";
+
+/** Compute the version hash that Claude Code appends to cc_version.
+ *  Takes chars at positions 4, 7, 20 of the first user message text,
+ *  concatenates with salt + version, and returns 3-char hex SHA-256 prefix. */
+function versionHash(messages: ApiMessage[]): string {
+  const firstUser = messages.find((m) => m.role === "user");
+  let text = "";
+  if (firstUser) {
+    const content = firstUser.content;
+    if (typeof content === "string") text = content;
+    else if (Array.isArray(content)) {
+      const tb = content.find((b: ApiContentBlock) => b.type === "text");
+      if (tb && "text" in tb) text = tb.text;
+    }
+  }
+  const chars = [4, 7, 20].map((i) => text[i] || "0").join("");
+  return createHash("sha256").update(`${BILLING_SALT}${chars}${CLAUDE_CODE_VERSION}`).digest("hex").slice(0, 3);
+}
+
+function billingHeader(messages: ApiMessage[]): string {
+  const hash = versionHash(messages);
+  return `x-anthropic-billing-header: cc_version=${CLAUDE_CODE_VERSION}.${hash}; cc_entrypoint=cli; cch=00000;`;
+}
 const STREAM_STALL_TIMEOUT = 120_000;
 const MAX_RETRIES = 10;
 
@@ -160,7 +183,7 @@ function buildRequest(
   if (tools && tools.length > 0) body.tools = injectToolBreakpoints(tools);
   // Billing header must be the first system block — identifies this as a
   // Claude Code request so the API routes to the correct backend.
-  const systemBlocks: unknown[] = [{ type: "text", text: BILLING_HEADER }];
+  const systemBlocks: unknown[] = [{ type: "text", text: billingHeader(messages) }];
   if (system) {
     systemBlocks.push({ type: "text", text: system, cache_control: { type: "ephemeral" } });
   }

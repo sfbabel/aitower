@@ -1,0 +1,438 @@
+/**
+ * External tools — discovery, PATH injection, daemon supervision, and runtime watching.
+ *
+ * Scans external-tools/{tool}/manifest.json for tool metadata.
+ * Each manifest declares:
+ *   - name:       command name (e.g. "gmail")
+ *   - bin:        relative path to executable (e.g. "./gmail" or "./bin/twitter")
+ *   - systemHint: text injected into the system prompt
+ *   - display:    { label, color } for TUI bash sub-command styling
+ *   - daemon:     (optional) long-running background process to supervise
+ *
+ * On startup, all manifests are loaded and:
+ *   - Their bin directories are prepended to process.env.PATH
+ *   - System hints are aggregated for the system prompt builder
+ *   - Display styles are collected for the TUI
+ *   - Declared daemons are spawned and supervised
+ *
+ * A filesystem watcher on the external-tools/ directory detects tools
+ * being added or removed at runtime. Changes are debounced and trigger
+ * a full re-scan + callback so the daemon can broadcast updated styles
+ * to connected clients.
+ */
+
+import { readFileSync, readdirSync, statSync, watch, existsSync, mkdirSync, openSync, closeSync } from "fs";
+import { join, dirname, resolve } from "path";
+import { spawn, type ChildProcess } from "child_process";
+import { log } from "./log";
+import { externalToolsDir as getExternalToolsDir } from "@aitower/shared/paths";
+import type { ExternalToolStyle } from "@aitower/shared/messages";
+
+// ── Manifest schema ──────────────────────────────────────────────
+
+interface ManifestDaemon {
+  /** Shell command to run from the tool directory (split on whitespace). */
+  command: string;
+  /**
+   * When to restart the daemon after it exits.
+   *   "on-failure" (default) — restart only on non-zero exit code
+   *   "always"               — restart on any exit
+   *   "never"                — don't restart
+   */
+  restart?: "on-failure" | "always" | "never";
+  /** Additional environment variables merged into the process env. */
+  env?: Record<string, string>;
+}
+
+interface Manifest {
+  name: string;
+  bin: string;
+  systemHint: string;
+  display: {
+    label: string;
+    color: string;
+  };
+  /** Optional long-running daemon that aitowerd will spawn and supervise. */
+  daemon?: ManifestDaemon;
+}
+
+interface LoadedTool {
+  manifest: Manifest;
+  /** Absolute path to the directory containing the binary. */
+  binDir: string;
+  /** Absolute path to the tool's root directory. */
+  toolDir: string;
+}
+
+// ── State ────────────────────────────────────────────────────────
+
+const BASE_PATH = process.env.PATH ?? "";
+let _tools: LoadedTool[] = [];
+let _watcher: ReturnType<typeof watch> | null = null;
+let _debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let _externalToolsDir: string | null = null;
+
+const DEBOUNCE_MS = 1_000;
+
+// ── Daemon supervision ───────────────────────────────────────────
+
+interface ManagedDaemon {
+  toolName: string;
+  toolDir: string;
+  config: ManifestDaemon;
+  child: ChildProcess | null;
+  restartCount: number;
+  restartTimer: ReturnType<typeof setTimeout> | null;
+  lastStartTime: number;
+  stopping: boolean;
+}
+
+const _daemons = new Map<string, ManagedDaemon>();
+
+/** Restart backoff schedule (ms). Resets after 5 min of stable uptime. */
+const BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000, 60_000];
+const BACKOFF_RESET_MS = 5 * 60_000;
+
+function spawnDaemonProcess(managed: ManagedDaemon): void {
+  const parts = managed.config.command.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    log("warn", `external-tools: empty daemon command for '${managed.toolName}'`);
+    return;
+  }
+
+  const [cmd, ...args] = parts;
+
+  // Ensure config/ dir exists for the log file
+  const configDir = join(managed.toolDir, "config");
+  mkdirSync(configDir, { recursive: true });
+  const logPath = join(configDir, "service.log");
+  const logFd = openSync(logPath, "a");
+
+  try {
+    const child = spawn(cmd, args, {
+      cwd: managed.toolDir,
+      stdio: ["ignore", logFd, logFd],
+      env: { ...process.env, ...managed.config.env },
+    });
+
+    managed.child = child;
+    managed.lastStartTime = Date.now();
+
+    log("info", `external-tools: started daemon '${managed.toolName}' (pid ${child.pid})`);
+
+    child.on("error", (err) => {
+      log("warn", `external-tools: daemon '${managed.toolName}' spawn error: ${err.message}`);
+      managed.child = null;
+      scheduleDaemonRestart(managed);
+    });
+
+    child.on("exit", (code, signal) => {
+      managed.child = null;
+
+      if (managed.stopping) {
+        log("info", `external-tools: daemon '${managed.toolName}' stopped`);
+        return;
+      }
+
+      log("warn", `external-tools: daemon '${managed.toolName}' exited (code=${code}, signal=${signal})`);
+
+      const policy = managed.config.restart ?? "on-failure";
+      const shouldRestart =
+        policy === "always" || (policy === "on-failure" && code !== 0);
+
+      if (shouldRestart) {
+        scheduleDaemonRestart(managed);
+      }
+    });
+  } finally {
+    // Parent closes its copy — child inherited the fd on spawn
+    closeSync(logFd);
+  }
+}
+
+function scheduleDaemonRestart(managed: ManagedDaemon): void {
+  if (managed.stopping) return;
+
+  // Reset backoff after sustained uptime
+  const uptime = Date.now() - managed.lastStartTime;
+  if (uptime > BACKOFF_RESET_MS) managed.restartCount = 0;
+
+  const delay = BACKOFF_MS[Math.min(managed.restartCount, BACKOFF_MS.length - 1)];
+  managed.restartCount++;
+
+  log("info", `external-tools: restarting daemon '${managed.toolName}' in ${delay / 1000}s (attempt ${managed.restartCount})`);
+
+  managed.restartTimer = setTimeout(() => {
+    managed.restartTimer = null;
+    if (!managed.stopping) spawnDaemonProcess(managed);
+  }, delay);
+  managed.restartTimer.unref?.();
+}
+
+function startToolDaemon(tool: LoadedTool): void {
+  if (!tool.manifest.daemon) return;
+
+  const existing = _daemons.get(tool.manifest.name);
+  if (existing?.child) return; // already running
+
+  const managed: ManagedDaemon = {
+    toolName: tool.manifest.name,
+    toolDir: tool.toolDir,
+    config: tool.manifest.daemon,
+    child: null,
+    restartCount: 0,
+    restartTimer: null,
+    lastStartTime: 0,
+    stopping: false,
+  };
+
+  _daemons.set(tool.manifest.name, managed);
+  spawnDaemonProcess(managed);
+}
+
+function stopToolDaemon(name: string): void {
+  const managed = _daemons.get(name);
+  if (!managed) return;
+
+  managed.stopping = true;
+
+  if (managed.restartTimer) {
+    clearTimeout(managed.restartTimer);
+    managed.restartTimer = null;
+  }
+
+  if (managed.child) {
+    const pid = managed.child.pid;
+    managed.child.kill("SIGTERM");
+
+    // Force-kill after 5s if still alive
+    const forceKill = setTimeout(() => {
+      if (managed.child) {
+        log("warn", `external-tools: force-killing daemon '${name}' (pid ${pid})`);
+        managed.child.kill("SIGKILL");
+      }
+    }, 5_000);
+    forceKill.unref?.();
+  }
+
+  _daemons.delete(name);
+}
+
+function stopAllDaemons(): void {
+  for (const name of [..._daemons.keys()]) {
+    stopToolDaemon(name);
+  }
+}
+
+// ── External tools directory ─────────────────────────────────────
+// Resolved from import.meta.dir via @aitower/shared/paths — no
+// git dependency, survives mv of the repo.
+
+// ── Manifest loading ─────────────────────────────────────────────
+
+function loadManifest(toolDir: string): LoadedTool | null {
+  const manifestPath = join(toolDir, "manifest.json");
+  if (!existsSync(manifestPath)) return null;
+
+  try {
+    const raw = readFileSync(manifestPath, "utf-8");
+    const data = JSON.parse(raw);
+
+    // Validate required fields
+    if (
+      typeof data.name !== "string" || !data.name ||
+      typeof data.bin !== "string" || !data.bin ||
+      typeof data.systemHint !== "string" ||
+      typeof data.display !== "object" || !data.display ||
+      typeof data.display.label !== "string" ||
+      typeof data.display.color !== "string"
+    ) {
+      log("warn", `external-tools: invalid manifest at ${manifestPath} — skipping`);
+      return null;
+    }
+
+    // Validate optional daemon field
+    if (data.daemon !== undefined) {
+      if (typeof data.daemon !== "object" || typeof data.daemon.command !== "string" || !data.daemon.command) {
+        log("warn", `external-tools: invalid daemon config in ${manifestPath} — ignoring daemon`);
+        data.daemon = undefined;
+      }
+    }
+
+    const binPath = resolve(toolDir, data.bin);
+    const binDir = dirname(binPath);
+
+    if (!existsSync(binPath)) {
+      log("warn", `external-tools: binary not found at ${binPath} (declared in ${manifestPath}) — skipping`);
+      return null;
+    }
+
+    return {
+      manifest: data as Manifest,
+      binDir,
+      toolDir,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log("warn", `external-tools: failed to read ${manifestPath}: ${msg}`);
+    return null;
+  }
+}
+
+function scanTools(dir: string): LoadedTool[] {
+  if (!existsSync(dir)) return [];
+
+  const tools: LoadedTool[] = [];
+  let entries: string[];
+
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return [];
+  }
+
+  for (const entry of entries) {
+    const toolDir = join(dir, entry);
+    try {
+      if (!statSync(toolDir).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    const tool = loadManifest(toolDir);
+    if (tool) tools.push(tool);
+  }
+
+  // Sort by name for deterministic ordering
+  tools.sort((a, b) => a.manifest.name.localeCompare(b.manifest.name));
+  return tools;
+}
+
+// ── PATH management ──────────────────────────────────────────────
+
+function updatePath(tools: LoadedTool[]): void {
+  if (tools.length === 0) {
+    process.env.PATH = BASE_PATH;
+    return;
+  }
+  // Deduplicate bin dirs (multiple tools could share a bin/ directory)
+  const dirs = [...new Set(tools.map(t => t.binDir))];
+  process.env.PATH = dirs.join(":") + ":" + BASE_PATH;
+}
+
+// ── Apply scan results ───────────────────────────────────────────
+
+function applyTools(tools: LoadedTool[]): boolean {
+  // Check if anything actually changed
+  const oldKey = _tools.map(t => t.manifest.name).join(",");
+  const newKey = tools.map(t => t.manifest.name).join(",");
+  if (oldKey === newKey) return false;
+
+  // Compute diff for daemon management
+  const oldNames = new Set(_tools.map(t => t.manifest.name));
+  const newNames = new Set(tools.map(t => t.manifest.name));
+
+  // Stop daemons for removed tools
+  for (const name of oldNames) {
+    if (!newNames.has(name)) stopToolDaemon(name);
+  }
+
+  // Start daemons for newly added tools
+  for (const tool of tools) {
+    if (!oldNames.has(tool.manifest.name) && tool.manifest.daemon) {
+      startToolDaemon(tool);
+    }
+  }
+
+  _tools = tools;
+  updatePath(tools);
+  return true;
+}
+
+// ── Public API ───────────────────────────────────────────────────
+
+/**
+ * Initialize external tools: scan, update PATH, start daemons, start watcher.
+ * The onUpdate callback fires when tools are added or removed at runtime.
+ */
+export function initExternalTools(onUpdate?: () => void): void {
+  _externalToolsDir = getExternalToolsDir();
+
+  // Ensure directory exists (gitignored, may not exist yet)
+  mkdirSync(_externalToolsDir, { recursive: true });
+
+  // Initial scan
+  const tools = scanTools(_externalToolsDir);
+  _tools = tools;
+  updatePath(tools);
+
+  if (tools.length > 0) {
+    log("info", `external-tools: loaded ${tools.length} tool(s): ${tools.map(t => t.manifest.name).join(", ")}`);
+  }
+
+  // Start declared daemons
+  const daemonTools = tools.filter(t => t.manifest.daemon);
+  for (const tool of daemonTools) {
+    startToolDaemon(tool);
+  }
+  if (daemonTools.length > 0) {
+    log("info", `external-tools: supervising ${daemonTools.length} daemon(s): ${daemonTools.map(t => t.manifest.name).join(", ")}`);
+  }
+
+  // Watch for changes
+  try {
+    _watcher = watch(_externalToolsDir, { persistent: false }, (_eventType, _filename) => {
+      if (_debounceTimer) clearTimeout(_debounceTimer);
+      _debounceTimer = setTimeout(() => {
+        _debounceTimer = null;
+        const updated = scanTools(_externalToolsDir!);
+        if (applyTools(updated)) {
+          log("info", `external-tools: reloaded — ${updated.length} tool(s): ${updated.map(t => t.manifest.name).join(", ") || "(none)"}`);
+          onUpdate?.();
+        }
+      }, DEBOUNCE_MS);
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log("warn", `external-tools: failed to start watcher: ${msg}`);
+  }
+}
+
+/** Stop the filesystem watcher and all supervised daemons. */
+export function stopExternalTools(): void {
+  if (_debounceTimer) {
+    clearTimeout(_debounceTimer);
+    _debounceTimer = null;
+  }
+  if (_watcher) {
+    _watcher.close();
+    _watcher = null;
+  }
+  stopAllDaemons();
+}
+
+/** Aggregated system hints from all loaded external tools. */
+export function getExternalToolHints(): string {
+  const hints = _tools
+    .filter(t => t.manifest.systemHint)
+    .map(t => t.manifest.systemHint);
+  return hints.length > 0 ? hints.join("\n") : "";
+}
+
+/** Display styles for TUI bash sub-command matching. */
+export function getExternalToolStyles(): ExternalToolStyle[] {
+  return _tools.map(t => ({
+    cmd: t.manifest.name,
+    label: t.manifest.display.label,
+    color: t.manifest.display.color,
+  }));
+}
+
+/** Number of currently loaded external tools. */
+export function getExternalToolCount(): number {
+  return _tools.length;
+}
+
+/** Number of tool daemons currently being supervised. */
+export function getSupervisedDaemonCount(): number {
+  return _daemons.size;
+}

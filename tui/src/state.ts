@@ -5,7 +5,7 @@
  * Message and block types live in messages.ts.
  */
 
-import type { ModelId, EffortLevel, UsageData, ToolDisplayInfo, ImageAttachment } from "./messages";
+import type { ModelId, EffortLevel, UsageData, ToolDisplayInfo, ExternalToolStyle, ImageAttachment } from "./messages";
 import { DEFAULT_EFFORT } from "./messages";
 import type { Message, AIMessage, SystemMessage } from "./messages";
 import type { MessageBound } from "./conversation";
@@ -173,6 +173,8 @@ export interface RenderState {
   systemMessageBuffer: SystemMessage[];
   /** Available tools reported by the daemon on connect. */
   toolRegistry: ToolDisplayInfo[];
+  /** External tool styles for bash sub-command matching (from daemon). */
+  externalToolStyles: ExternalToolStyle[];
   /** Whether tool result output is visible. Toggled with Ctrl+O. */
   showToolOutput: boolean;
   /** Cursor position in chat history (active when chatFocus === "history"). */
@@ -241,6 +243,7 @@ export function createInitialState(): RenderState {
     pendingSend: { active: false, text: "" },
     systemMessageBuffer: [],
     toolRegistry: [],
+    externalToolStyles: [],
     showToolOutput: false,
     historyCursor: createHistoryCursor(),
     historyVisualAnchor: createHistoryCursor(),

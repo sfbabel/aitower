@@ -8,8 +8,8 @@
  * Commands flow client → daemon. Events flow daemon → client.
  */
 
-import type { ModelId, EffortLevel, Block, MessageMetadata, UsageData, ConversationSummary, ToolDisplayInfo, ImageAttachment } from "./messages";
-export type { ModelId, EffortLevel, Block, MessageMetadata, UsageData, ConversationSummary, ToolDisplayInfo, ImageAttachment };
+import type { ModelId, EffortLevel, Block, MessageMetadata, UsageData, ConversationSummary, ToolDisplayInfo, ExternalToolStyle, ImageAttachment } from "./messages";
+export type { ModelId, EffortLevel, Block, MessageMetadata, UsageData, ConversationSummary, ToolDisplayInfo, ExternalToolStyle, ImageAttachment };
 
 // ── Commands (client → daemon) ──────────────────────────────────────
 
@@ -162,6 +162,11 @@ export interface LlmCompleteCommand {
   maxTokens?: number;
 }
 
+export interface GetSystemPromptCommand {
+  type: "get_system_prompt";
+  reqId?: string;
+}
+
 export interface LoginCommand {
   type: "login";
   reqId?: string;
@@ -194,6 +199,7 @@ export type Command =
   | UnqueueMessageCommand
   | UnwindConversationCommand
   | LlmCompleteCommand
+  | GetSystemPromptCommand
   | LoginCommand
   | LogoutCommand;
 
@@ -391,6 +397,7 @@ export interface SystemMessageEvent {
 export interface ToolsAvailableEvent {
   type: "tools_available";
   tools: ToolDisplayInfo[];
+  externalToolStyles?: ExternalToolStyle[];
 }
 
 export interface HistoryUpdatedEvent {
@@ -406,6 +413,12 @@ export interface LlmCompleteResultEvent {
   type: "llm_complete_result";
   reqId?: string;
   text: string;
+}
+
+export interface SystemPromptEvent {
+  type: "system_prompt";
+  reqId?: string;
+  systemPrompt: string;
 }
 
 export interface AuthStatusEvent {
@@ -452,5 +465,6 @@ export type Event =
   | ToolsAvailableEvent
   | HistoryUpdatedEvent
   | LlmCompleteResultEvent
+  | SystemPromptEvent
   | AuthStatusEvent
   | ErrorEvent;

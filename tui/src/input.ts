@@ -205,7 +205,15 @@ export function parseKeys(data: Buffer | string): KeyEvent[] {
           if (final === "u") {
             const csiuType = CSI_U_MAP[params];
             if (csiuType) { events.push({ type: csiuType }); i += seqLen; continue; }
-            // Unknown CSI u — skip
+            // Unrecognized CSI u — if it's a plain keycode (no modifier),
+            // emit as a regular char. This handles kitty protocol sending
+            // normal letters as ESC[<codepoint>u.
+            const codepoint = parseInt(params.split(";")[0], 10);
+            if (!isNaN(codepoint) && codepoint >= 32) {
+              events.push({ type: "char", char: String.fromCodePoint(codepoint) });
+              i += seqLen;
+              continue;
+            }
             i += seqLen;
             continue;
           }

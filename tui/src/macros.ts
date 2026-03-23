@@ -27,17 +27,58 @@
  *       { name: "foo", desc: "Foo variant", expansion: "Expansion for /example foo" },
  *     ],
  *   }
+ *
+ * Args can nest arbitrarily deep (e.g. "/tool install discord"):
+ *
+ *   {
+ *     name: "/tool",
+ *     desc: "Manage tools",
+ *     expansion: "...",
+ *     args: [
+ *       {
+ *         name: "install", desc: "Install a tool", expansion: "...",
+ *         args: [
+ *           { name: "discord", desc: "discord-cli", expansion: "Install discord-cli..." },
+ *         ],
+ *       },
+ *     ],
+ *   }
  */
 
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import type { CompletionItem } from "./commands";
 
+// ── aitower root (derived from this file's location) ─────────
+
+const __filename_ = typeof __filename !== "undefined" ? __filename : fileURLToPath(import.meta.url);
+/** Absolute path to the aitower repo root (e.g. /home/user/Workspace/aitower). */
+const EXO_ROOT = resolve(dirname(__filename_), "..", "..");
+const TOOLS_DIR = `${EXO_ROOT}/external-tools`;
+
 // ── Single source of truth ───────────────────────────────────────
+
+interface MacroArg {
+  name: string;
+  desc: string;
+  expansion: string;
+  args?: MacroArg[];
+}
 
 interface MacroDef {
   name: string;
   desc: string;
   expansion: string;
-  args?: { name: string; desc: string; expansion: string }[];
+  args?: MacroArg[];
+}
+
+/** Build a tool-install expansion string with the dynamic paths. */
+function toolInstall(cliName: string, repo: string): MacroArg {
+  const shortName = cliName.replace(/-cli$/, "");
+  return {
+    name: shortName, desc: cliName,
+    expansion: `Install the ${cliName} tool for yourself. Clone ${repo} into ${TOOLS_DIR}/${cliName}, then follow the README/setup instructions to build and install it. If the tool requires authentication or API tokens, walk me through the setup step by step — ask me for any credentials or config values you need.`,
+  };
 }
 
 const MACROS: MacroDef[] = [
@@ -45,14 +86,14 @@ const MACROS: MacroDef[] = [
   {
     name: "/commit", desc: "Commit and push", expansion: "If you haven't already, commit your work and push it.",
     args: [
-      { name: "aitower", desc: "Commit ~/Workspace/aitower", expansion: "If you haven't already, commit and push the work inside the aitower directory (~/Workspace/aitower)." },
+      { name: "aitower", desc: `Commit ${EXO_ROOT}`, expansion: `If you haven't already, commit and push the work inside the aitower directory (${EXO_ROOT}).` },
     ],
   },
   { name: "/noop", desc: "Thoughts only, no edits", expansion: "Don't write or edit any files yet. Just tell me your thoughts on this." },
   {
     name: "/plan", desc: "Plan only, no edits", expansion: "Come up with a plan for this and tell me it. Don't write or edit any files.",
     args: [
-      { name: "other", desc: "Draft plan for another instance", expansion: "Draft a plan for this as a prompt for another instance. Write it as a kebab-case markdown file inside ~/.config/aitower/playground/. The file should be self-contained so I can send it to another instance and he gets all the context he needs to work on it." },
+      { name: "other", desc: "Draft plan for another instance", expansion: "Draft a plan for this as a prompt for another instance. Write it as a kebab-case markdown file inside ~/.config/aitower/storage/playground/. The file should be self-contained so I can send it to another instance and he gets all the context he needs to work on it." },
     ],
   },
   { name: "/fix", desc: "Go ahead and fix it", expansion: "Go ahead and fix it" },
@@ -62,37 +103,72 @@ const MACROS: MacroDef[] = [
   { name: "/long", desc: "Work until complete", expansion: "This is a long running task, work tirelessly until you can verify that everything is complete and correct" },
   { name: "/diagnose", desc: "Pinpoint the cause", expansion: "Can you pinpoint the exact cause and tell me your diagnosis?" },
   { name: "/quality", desc: "Code quality assessment", expansion: "Give your changes a code quality assesment. Is there anything that should be split off into other files, de-duplicated, or made more clear?" },
-  { name: "/qutebrowser", desc: "Qutebrowser CLI context", expansion: "You have access to qutebrowser through the qb CLI tool (IN YOUR PATH, source at ~/Workspace/qutebrowser-cli/). Run qb -h for usage reference." },
-  { name: "/gmail", desc: "Gmail tool context", expansion: "You have access to my gmail through the gmail CLI tool (IN YOUR PATH, source at ~/Workspace/gmail-cli) Run gmail -h for usage reference." },
-  { name: "/twitter", desc: "Twitter tool context", expansion: "You have access to Twitter/X through the twitter CLI tool (IN YOUR PATH, source at /Workspace/twitter/). Run twitter -h for usage reference." },
   {
     name: "/worktree", desc: "Work in a git worktree",
-    expansion: "Work in a git worktree for this task. Find the repo root first (the directory containing `.git/`; don't assume CWD is it). Create the worktree with `git worktree add .worktrees/<name> -b <name> HEAD` from there. When I say I'm satisfied, merge back to main and clean up: run `git worktree remove .worktrees/<name>`, delete the branch with `git branch -d <name>`, and remove the leftover config dirs `~/.config/aitower/runtime/<name>/` and `~/.config/aitower/instances/<name>/`.",
+    expansion: "Work in a git worktree for this task. Find the repo root first (the directory containing `.git/`; don't assume CWD is it). Create the worktree with `git worktree add .worktrees/<name> -b <name> HEAD` from there. When I say I'm satisfied, merge back to main and clean up: run `git worktree remove .worktrees/<name>`, delete the branch with `git branch -d <name>`, and remove the leftover config dirs `~/.config/aitower/runtime/<name>/` and `~/.config/aitower/data/instances/<name>/`.",
     args: [
       { name: "ready", desc: "Merge main in, resolve conflicts, assess", expansion: "Merge main into the worktree branch (use local main, not origin — it's always up to date), resolve any merge conflicts, and give the result a code assessment. Get it to a merge-ready state." },
-      { name: "merge", desc: "Merge worktree back into main", expansion: "The work in the worktree is good. Merge back into main and clean up. Remove the worktree, branch, and any files it might've created in ~/.config/aitower/instances/ and ~/.config/aitower/runtime/ as a result of being a worktree after confirming a sucessfull merge" },
+      { name: "merge", desc: "Merge worktree back into main", expansion: "The work in the worktree is good. Merge back into main and clean up. Remove the worktree, branch, and any files it might've created in ~/.config/aitower/data/instances/ and ~/.config/aitower/runtime/ as a result of being a worktree after confirming a sucessfull merge" },
+    ],
+  },
+  {
+    name: "/tool",
+    desc: "Manage external tools",
+    expansion: "Manage external tools. Use '/tool install <name>' to install a tool.",
+    args: [
+      {
+        name: "install", desc: "Install an external tool",
+        expansion: `Install an external tool for yourself. Available tools: discord, exo, gmail, qutebrowser, twitter, whatsapp, xenv. Clone the repo into ${TOOLS_DIR}/ and follow the README/setup instructions to build and install it. If the tool requires authentication or API tokens, walk me through the setup step by step — ask me for any credentials or config values you need.`,
+        args: [
+          toolInstall("discord-cli", "git@github.com:Yeyito777/discord-cli.git"),
+          toolInstall("exo-cli", "https://github.com/Yeyito777/exo-cli.git"),
+          toolInstall("gmail-cli", "https://github.com/Yeyito777/gmail-cli.git"),
+          toolInstall("qutebrowser-cli", "https://github.com/Yeyito777/qutebrowser-cli.git"),
+          toolInstall("twitter-cli", "https://github.com/Yeyito777/twitter-cli.git"),
+          toolInstall("whatsapp-cli", "https://github.com/Yeyito777/whatsapp-cli.git"),
+          toolInstall("xenv-cli", "https://github.com/Yeyito777/xenv-cli.git"),
+        ],
+      },
     ],
   },
 ];
+
+// ── Recursive flattening helpers ────────────────────────────────
+
+/** Flatten a macro tree into [key, expansion] pairs for MACRO_MAP. */
+function flattenExpansions(prefix: string, node: { expansion: string; args?: MacroArg[] }): [string, string][] {
+  const entries: [string, string][] = [[prefix, node.expansion]];
+  for (const arg of node.args ?? []) {
+    entries.push(...flattenExpansions(`${prefix} ${arg.name}`, arg));
+  }
+  return entries;
+}
+
+/** Flatten a macro tree into [key, CompletionItem[]] pairs for MACRO_ARGS. */
+function flattenArgLists(prefix: string, node: { args?: MacroArg[] }): [string, CompletionItem[]][] {
+  if (!node.args || node.args.length === 0) return [];
+  const entries: [string, CompletionItem[]][] = [
+    [prefix, node.args.map(a => ({ name: a.name, desc: a.desc }))],
+  ];
+  for (const arg of node.args) {
+    entries.push(...flattenArgLists(`${prefix} ${arg.name}`, arg));
+  }
+  return entries;
+}
 
 // ── Derived exports ──────────────────────────────────────────────
 
 /** Autocomplete entries for macros (base names only — args appear after selecting the base command). */
 export const MACRO_LIST: CompletionItem[] = MACROS.map(m => ({ name: m.name, desc: m.desc }));
 
-/** Expansion text for each macro, keyed by "/name" or "/name arg". */
+/** Expansion text for each macro, keyed by "/name" or "/name arg1 arg2 ...". */
 export const MACRO_MAP: Record<string, string> = Object.fromEntries(
-  MACROS.flatMap(m => [
-    [m.name, m.expansion],
-    ...(m.args ?? []).map(a => [`${m.name} ${a.name}`, a.expansion]),
-  ]),
+  MACROS.flatMap(m => flattenExpansions(m.name, m)),
 );
 
-/** Sub-argument lists for macros that have them (used by autocomplete and prompt highlighting). */
+/** Sub-argument lists, keyed by "/name" or "/name arg1 ...". Used by autocomplete and prompt highlighting. */
 export const MACRO_ARGS: Record<string, CompletionItem[]> = Object.fromEntries(
-  MACROS
-    .filter(m => m.args && m.args.length > 0)
-    .map(m => [m.name, m.args!.map(a => ({ name: a.name, desc: a.desc }))]),
+  MACROS.flatMap(m => flattenArgLists(m.name, m)),
 );
 
 // ── Expansion ─────────────────────────────────────────────────────
@@ -100,19 +176,23 @@ export const MACRO_ARGS: Record<string, CompletionItem[]> = Object.fromEntries(
 /**
  * Expand macro commands in user message text.
  *
- * Tries "command + arg" first (e.g. "/commit aitower"), then falls
- * back to the bare command (preserving unrecognized arg words).
+ * Captures a slash command followed by any number of trailing words,
+ * then tries longest-prefix match in MACRO_MAP. Unrecognised trailing
+ * words are preserved after the expansion.
+ *
  * Only matches at word boundaries (start of line or after whitespace).
  */
 export function expandMacros(text: string): string {
-  return text.replace(/(?<=^|\s)(\/[\w-]+)(?:[ \t]+([\w-]+))?/gm, (_full, cmd, arg) => {
-    if (arg) {
-      const withArg = cmd + " " + arg;
-      if (MACRO_MAP[withArg]) return MACRO_MAP[withArg];
+  return text.replace(/(?<=^|\s)(\/[\w-]+(?:[ \t]+[\w-]+)*)/gm, (full) => {
+    const words = full.split(/[ \t]+/);
+    // Try longest prefix first
+    for (let len = words.length; len >= 1; len--) {
+      const key = words.slice(0, len).join(" ");
+      if (MACRO_MAP[key]) {
+        const remainder = words.slice(len).join(" ");
+        return remainder ? MACRO_MAP[key] + " " + remainder : MACRO_MAP[key];
+      }
     }
-    if (MACRO_MAP[cmd]) {
-      return arg ? MACRO_MAP[cmd] + " " + arg : MACRO_MAP[cmd];
-    }
-    return arg ? cmd + " " + arg : cmd;
+    return full;
   });
 }

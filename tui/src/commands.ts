@@ -38,7 +38,8 @@ export type CommandResult =
   | { type: "pin_conversation"; convId: string; pinned: boolean }
   | { type: "login" }
   | { type: "logout" }
-  | { type: "theme_changed" };
+  | { type: "theme_changed" }
+  | { type: "get_system_prompt" };
 
 export interface SlashCommand {
   name: string;
@@ -309,6 +310,14 @@ const commands: SlashCommand[] = [
       }
       clearPrompt(state);
       return { type: "handled" };
+    },
+  },
+  {
+    name: "/system",
+    description: "Show the current system prompt",
+    handler: (_text, state) => {
+      clearPrompt(state);
+      return { type: "get_system_prompt" };
     },
   },
   {

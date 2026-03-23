@@ -1,13 +1,13 @@
 #!/bin/bash
 # schedule: 0 9 * * 1-5
-# description: Morning email digest (example — copy to ~/.config/aitower/cron/)
+# description: Morning email digest (example — copy to config/cron/)
 # timeout: 120
 
 # This is an example cron job for aitower.
-# Copy it to ~/.config/aitower/cron/ and make it executable:
+# Copy it to config/cron/ and make it executable:
 #
-#   cp daemon/src/cron-example.sh ~/.config/aitower/cron/morning-email.sh
-#   chmod +x ~/.config/aitower/cron/morning-email.sh
+#   cp daemon/src/cron-example.sh config/cron/morning-email.sh
+#   chmod +x config/cron/morning-email.sh
 #
 # The daemon will pick it up automatically (no restart needed).
 #

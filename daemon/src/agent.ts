@@ -135,12 +135,12 @@ export async function runAgentLoop(
   let lastInputTokens = 0;
 
   // Context pressure thresholds — injected as text blocks in tool result messages.
-  // Kept deliberately low to combat "context rot": models perform best when
-  // their context is not bloated. Every level targets 100K.
+  // Tuned to balance usable context against "context rot" (model attention
+  // degrades in very long contexts). Every level targets 200K.
   const THRESHOLDS = [
-    { at: 200_000, level: "advisory" as const },
-    { at: 400_000, level: "warning" as const },
-    { at: 600_000, level: "critical" as const },
+    { at: 400_000, level: "advisory" as const },
+    { at: 600_000, level: "warning" as const },
+    { at: 800_000, level: "critical" as const },
   ];
   let highestFiredLevel = -1; // index into THRESHOLDS, -1 = none fired
 

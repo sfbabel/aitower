@@ -66,9 +66,9 @@ if ask "Restore system configs (/etc)?"; then
 
     # Directories
     for d in "${ETC_DIRS[@]}"; do
-        if [[ -d "$BACKUP_DIR/system/$d" ]]; then
+        if [[ -d "$BACKUP_DIR/system/$d" ]] && ls "$BACKUP_DIR/system/$d/"* &>/dev/null; then
             sudo mkdir -p "/etc/$d"
-            sudo cp -a "$BACKUP_DIR/system/$d/"* "/etc/$d/" 2>/dev/null || true
+            sudo cp -a "$BACKUP_DIR/system/$d/"* "/etc/$d/" 2>/dev/null || warn "Failed to restore /etc/$d/"
             log "  /etc/$d/"
         fi
     done

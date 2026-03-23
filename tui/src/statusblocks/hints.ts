@@ -32,6 +32,7 @@ const PROMPT_NORMAL: Hint[] = [
 const SIDEBAR: Hint[] = [
   { key: "Enter", desc: "open" },
   { key: "j/k", desc: "navigate" },
+  { key: "/", desc: "search" },
   { key: "right-click", desc: "menu" },
   { key: "s", desc: "close" },
 ];

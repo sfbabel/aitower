@@ -11,7 +11,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
+import { configDir } from "@aitower/shared/paths";
 import { whale } from "./themes/whale";
 import { cerberus } from "./themes/cerberus";
 
@@ -49,7 +49,7 @@ export interface Theme {
   userBg: string;         // User message bubble
   sidebarBg: string;      // Sidebar body
   sidebarSelBg: string;   // Sidebar selected item
-  sidebarHoverBg: string;  // Sidebar hovered item
+  sidebarHoverBg: string; // Sidebar hovered item
   cursorBg: string;       // Inline cursor (history, visual mode)
   historyLineBg: string;  // Selected line background in history
   selectionBg: string;    // Visual mode selection highlight
@@ -76,11 +76,6 @@ export const THEME_NAMES = Object.keys(themes) as ThemeName[];
 export type ThemeName = keyof typeof themes;
 
 // ── Config persistence ─────────────────────────────────────────────
-
-function configDir(): string {
-  const xdg = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
-  return join(xdg, "aitower");
-}
 
 function themeConfigPath(): string {
   return join(configDir(), "theme.json");

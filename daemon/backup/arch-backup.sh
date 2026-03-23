@@ -48,7 +48,7 @@ done
 
 for d in "${ETC_DIRS[@]}"; do
     src="/etc/$d"
-    if [[ -d "$src" ]]; then
+    if [[ -d "$src" ]] && ls "$src/"* &>/dev/null; then
         mkdir -p "$SYSCONF/$d"
         cp -a "$src/"* "$SYSCONF/$d/" 2>/dev/null || warn "Failed to copy /etc/$d/"
     fi
