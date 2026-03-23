@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
- * exo — Exocortex CLI client.
+ * exo — aitower CLI client.
  *
- * A stateless, machine-friendly interface to exocortexd.
+ * A stateless, machine-friendly interface to aitowerd.
  * Each invocation connects, does its work, and disconnects.
  * The daemon holds all state; conversation IDs are the handles.
  *
@@ -32,11 +32,11 @@
 import { Connection } from "./conn";
 import { send, ls, info, history, rm, abort, rename, llm, status, type OutputOptions } from "./commands";
 import { printHelp, printCommandHelp, hasCommandHelp } from "./help";
-import type { ModelId } from "@exocortex/shared/protocol";
+import type { ModelId } from "@aitower/shared/protocol";
 
 // ── Arg parsing ─────────────────────────────────────────────────────
 
-const SUBCOMMANDS = new Set(["ls", "info", "history", "rm", "abort", "rename", "llm", "status", "help"]);
+const SUBCOMMANDS = new Set(["ls", "info", "history", "rm", "abort", "rename", "llm", "status", "help", "import"]);
 
 // Aliases → canonical subcommand name
 const ALIASES: Record<string, string> = {
@@ -249,6 +249,20 @@ async function main(): Promise<number> {
           : args.positionals.join(" ");
         if (!text) { process.stderr.write("Usage: exo llm \"text\" --system \"prompt\"\nRun 'exo llm --help' for details.\n"); return 1; }
         return await llm(conn, text, args.system, args.model, opts);
+      }
+
+      case "import": {
+        // Import doesn't need a daemon connection — run the script directly
+        conn.disconnect();
+        const { execSync } = await import("child_process");
+        const scriptPath = new URL("../../scripts/import-claude-code.ts", import.meta.url).pathname;
+        const importArgs = args.positionals.length > 0 ? args.positionals.join(" ") : "--all";
+        try {
+          execSync(`bun run ${scriptPath} ${importArgs}`, { stdio: "inherit" });
+          return 0;
+        } catch {
+          return 1;
+        }
       }
 
       default: {

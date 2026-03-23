@@ -15,7 +15,7 @@ import type {
   ConversationUpdatedEvent,
   AckEvent,
   LlmCompleteResultEvent,
-} from "@exocortex/shared/protocol";
+} from "@aitower/shared/protocol";
 import { collectResponse, type StreamCallback } from "./collect";
 import { formatResponseAsJson, formatEntriesAsText, formatEntriesAsJson } from "./format";
 

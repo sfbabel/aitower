@@ -1,7 +1,7 @@
 /**
- * IPC protocol for the Exocortex TUI.
+ * IPC protocol for the aitower TUI.
  *
  * Re-exports from the shared protocol — single source of truth.
  */
 
-export * from "@exocortex/shared/protocol";
+export * from "@aitower/shared/protocol";

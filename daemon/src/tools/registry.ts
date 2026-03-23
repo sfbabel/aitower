@@ -5,7 +5,7 @@
  */
 
 import type { Tool, ToolResult, ToolSummary } from "./types";
-import type { ToolDisplayInfo } from "@exocortex/shared/messages";
+import type { ToolDisplayInfo } from "@aitower/shared/messages";
 import type { ApiToolCall } from "../api";
 import type { ToolExecResult } from "../agent";
 import { bash, executeBashBackgroundable } from "./bash";
@@ -16,6 +16,7 @@ import { grep } from "./grep";
 import { edit } from "./edit";
 import { browse } from "./browse";
 import { context, executeContext, type ContextToolEnv } from "./context";
+import { manual } from "./manual";
 import { TOOL_BACKGROUND_SECONDS } from "../constants";
 
 export type { ContextToolEnv };
@@ -31,6 +32,7 @@ const TOOLS: Tool[] = [
   edit,
   browse,
   context,
+  manual,
 ];
 
 const toolMap = new Map<string, Tool>(TOOLS.map(t => [t.name, t]));

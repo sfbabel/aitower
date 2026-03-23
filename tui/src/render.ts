@@ -1,5 +1,5 @@
 /**
- * Layout composition for the Exocortex TUI.
+ * Layout composition for the aitower TUI.
  *
  * Positions all UI components: topbar, sidebar, message area,
  * prompt line, and status line. Most components render themselves —
@@ -12,7 +12,7 @@
  */
 
 import type { RenderState } from "./state";
-import type { ImageAttachment } from "./messages";
+import type { ImageAttachment, ConversationSummary } from "./messages";
 import { renderStatusLine } from "./statusline";
 import { renderTopbar } from "./topbar";
 import { renderSidebar, SIDEBAR_WIDTH } from "./sidebar";
@@ -24,8 +24,12 @@ import { clampCursor, stripAnsi, contentBounds, logicalLineRange } from "./histo
 import { renderLineWithCursor, renderLineWithSelection } from "./cursorrender";
 import { highlightPromptInput } from "./prompthighlight";
 import { formatSize, imageLabel } from "./clipboard";
+import { renderContextMenu } from "./contextmenu";
 
 import type { QueuePromptState, EditMessageState } from "./state";
+
+/** Visible width of the prompt prefix ("I > ", "N > ", etc.). */
+export const PROMPT_PREFIX_LEN = 4;
 
 // ── ANSI positioning (non-color escapes) ────────────────────────────
 
@@ -154,7 +158,7 @@ export function render(state: RenderState): void {
   out.push(bgLine(`${historyColor}${"─".repeat(chatW)}${theme.reset}`));
 
   // ── Input line wrapping ────────────────────────────────────────
-  const promptLen = 4;   // "N > " or "I > "
+  const promptLen = PROMPT_PREFIX_LEN;
   const maxInputWidth = chatW - promptLen;
   const maxInputRows = Math.min(10, Math.floor((rows - 6) / 2));
 
@@ -200,9 +204,14 @@ export function render(state: RenderState): void {
     state.scrollOffset = Math.max(0, state.scrollOffset + (totalLines - prevTotal));
   }
 
-  // Cache layout for scroll functions
+  // Cache layout for scroll and mouse functions
   state.layout.totalLines = totalLines;
   state.layout.messageAreaHeight = messageAreaHeight;
+  state.layout.sidebarWidth = sidebarW;
+  state.layout.chatCol = chatCol;
+  state.layout.sepAbove = sepAbove;
+  state.layout.firstInputRow = firstInputRow;
+  state.layout.sepBelow = sepBelow;
 
   let viewStart: number;
   if (state.scrollOffset === 0) {
@@ -234,6 +243,20 @@ export function render(state: RenderState): void {
     hlLast = range.last;
   }
 
+  // Mouse drag selection range (normalized so mSelStart ≤ mSelEnd)
+  const mSel = state.mouseSelection;
+  let mSelStartRow = -1, mSelStartCol = -1, mSelEndRow = -1, mSelEndCol = -1;
+  if (mSel) {
+    if (mSel.anchorRow < mSel.endRow || (mSel.anchorRow === mSel.endRow && mSel.anchorCol <= mSel.endCol)) {
+      mSelStartRow = mSel.anchorRow; mSelStartCol = mSel.anchorCol;
+      mSelEndRow = mSel.endRow; mSelEndCol = mSel.endCol;
+    } else {
+      mSelStartRow = mSel.endRow; mSelStartCol = mSel.endCol;
+      mSelEndRow = mSel.anchorRow; mSelEndCol = mSel.anchorCol;
+    }
+  }
+  const hasMouseSel = mSel !== null && (mSelStartRow !== mSelEndRow || mSelStartCol !== mSelEndCol);
+
   for (let i = 0; i < messageAreaHeight; i++) {
     const row = messageAreaStart + i;
     out.push(move_to(row, 1) + cl);
@@ -247,7 +270,29 @@ export function render(state: RenderState): void {
     if (lineIdx < totalLines) {
       const line = allLines[lineIdx];
 
-      if (inVisual && lineIdx >= vStartRow && lineIdx <= vEndRow) {
+      // Mouse drag selection takes priority over vim visual
+      if (hasMouseSel && lineIdx >= mSelStartRow && lineIdx <= mSelEndRow) {
+        const plain = stripAnsi(line);
+        const bounds = contentBounds(plain);
+        let sCol: number;
+        let eCol: number;
+
+        if (mSelStartRow === mSelEndRow) {
+          sCol = mSelStartCol;
+          eCol = mSelEndCol;
+        } else if (lineIdx === mSelStartRow) {
+          sCol = mSelStartCol;
+          eCol = bounds.end;
+        } else if (lineIdx === mSelEndRow) {
+          sCol = bounds.start;
+          eCol = mSelEndCol;
+        } else {
+          sCol = bounds.start;
+          eCol = bounds.end;
+        }
+
+        out.push(bgLine(renderLineWithSelection(line, sCol, eCol)));
+      } else if (inVisual && lineIdx >= vStartRow && lineIdx <= vEndRow) {
         // This line is part of the visual selection — text-bound highlight
         const plain = stripAnsi(line);
         const bounds = contentBounds(plain);
@@ -425,6 +470,20 @@ export function render(state: RenderState): void {
   // ── Edit message overlay ──────────────────────────────────────
   if (state.editMessagePrompt) {
     out.push(renderEditMessageOverlay(state.editMessagePrompt, chatW, chatCol, sepAbove, messageAreaHeight));
+  }
+
+  // ── Context menu overlay ────────────────────────────────────
+  if (state.contextMenu) {
+    out.push(renderContextMenu(state.contextMenu, rows, cols));
+  }
+
+  // ── Hover tooltip (sidebar) ────────────────────────────────
+  if (sidebarOpen && state.sidebar.hoveredIndex !== null && !state.contextMenu) {
+    const hIdx = state.sidebar.hoveredIndex;
+    const hConv = state.sidebar.conversations[hIdx];
+    if (hConv) {
+      out.push(renderHoverTooltip(hConv, sidebarW, chatCol, rows, cols));
+    }
   }
 
   // ── Cursor ─────────────────────────────────────────────────────
@@ -629,4 +688,60 @@ function renderEditMessageOverlay(
   }
 
   return result;
+}
+
+// ── Hover tooltip ────────────────────────────────────────────────────
+
+function renderHoverTooltip(
+  conv: ConversationSummary,
+  sidebarW: number,
+  chatCol: number,
+  totalRows: number,
+  totalCols: number,
+): string {
+  const model = conv.model.charAt(0).toUpperCase() + conv.model.slice(1);
+  const msgs = `${conv.messageCount} msg${conv.messageCount !== 1 ? "s" : ""}`;
+  const date = new Date(conv.updatedAt);
+  const ago = formatTimeAgo(date);
+  const flags = [conv.pinned && "pinned", conv.marked && "starred"].filter(Boolean).join(", ");
+
+  const lines: string[] = [
+    `${model} · ${msgs} · ${ago}`,
+  ];
+  if (flags) lines.push(flags);
+
+  const innerWidth = Math.max(...lines.map(l => l.length)) + 2;
+  const boxWidth = innerWidth + 2;
+
+  // Position: right edge of sidebar, near the bottom
+  const boxLeft = Math.min(chatCol, totalCols - boxWidth);
+  const boxTop = Math.max(1, totalRows - lines.length - 3);
+
+  let out = "";
+  out += move_to(boxTop, boxLeft);
+  out += `${theme.sidebarBg}${theme.accent}┌${"─".repeat(innerWidth)}┐${theme.reset}`;
+
+  for (let i = 0; i < lines.length; i++) {
+    const row = boxTop + 1 + i;
+    const pad = Math.max(0, innerWidth - lines[i].length - 1);
+    out += move_to(row, boxLeft);
+    out += `${theme.sidebarBg}${theme.accent}│${theme.reset}${theme.sidebarBg}${theme.text} ${lines[i]}${" ".repeat(pad)}`;
+    out += `${theme.accent}│${theme.reset}`;
+  }
+
+  const bottomRow = boxTop + 1 + lines.length;
+  out += move_to(bottomRow, boxLeft);
+  out += `${theme.sidebarBg}${theme.accent}└${"─".repeat(innerWidth)}┘${theme.reset}`;
+
+  return out;
+}
+
+function formatTimeAgo(date: Date): string {
+  const now = Date.now();
+  const diff = Math.floor((now - date.getTime()) / 1000);
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+  return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }

@@ -5,7 +5,7 @@
  * This module maps those F-keys to Unicode symbol insertions for the
  * promptline in insert mode.
  *
- * Master list (shared with Exocortex TUI and qutebrowser):
+ * Master list (shared with aitower TUI and qutebrowser):
  *   Ctrl+1 (F14) → ←  left arrow
  *   Ctrl+2 (F15) → •  bullet point
  *   Ctrl+3 (F16) → →  right arrow

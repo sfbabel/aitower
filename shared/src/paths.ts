@@ -1,5 +1,5 @@
 /**
- * @exocortex/shared — Path resolution with git worktree isolation.
+ * @aitower/shared — Path resolution with git worktree isolation.
  *
  * When running from a linked git worktree, runtime paths (socket, PID)
  * and data paths (conversations) are namespaced by worktree name.
@@ -17,7 +17,7 @@ import { join, basename, resolve } from "path";
 
 const CONFIG_DIR = join(
   process.env.XDG_CONFIG_HOME || join(homedir(), ".config"),
-  "exocortex",
+  "aitower",
 );
 
 // ── Worktree detection ──────────────────────────────────────────────
@@ -63,7 +63,7 @@ function detectWorktree(): string | null {
 
 // ── Public API ──────────────────────────────────────────────────────
 
-/** Base config directory (~/.config/exocortex). */
+/** Base config directory (~/.config/aitower). */
 export function configDir(): string {
   return CONFIG_DIR;
 }
@@ -78,12 +78,12 @@ export function runtimeDir(): string {
 
 /** Full path to the daemon socket. */
 export function socketPath(): string {
-  return join(runtimeDir(), "exocortexd.sock");
+  return join(runtimeDir(), "aitowerd.sock");
 }
 
 /** Full path to the daemon PID file. */
 export function pidPath(): string {
-  return join(runtimeDir(), "exocortexd.pid");
+  return join(runtimeDir(), "aitowerd.pid");
 }
 
 /** Conversations directory. Isolated per worktree to prevent data conflicts. */

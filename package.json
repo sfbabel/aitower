@@ -1,5 +1,5 @@
 {
-  "name": "exocortex",
+  "name": "aitower",
   "private": true,
   "workspaces": ["shared", "daemon", "tui", "cli"],
   "scripts": {

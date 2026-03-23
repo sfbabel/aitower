@@ -1,5 +1,5 @@
 {
-  "name": "exocortex-tui",
+  "name": "aitower-tui",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
@@ -7,7 +7,7 @@
     "dev": "bun run --watch src/main.ts"
   },
   "dependencies": {
-    "@exocortex/shared": "workspace:*"
+    "@aitower/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

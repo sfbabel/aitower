@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# exo — Exocortex CLI client.
+# exo — Aitower CLI client.
 # Thin wrapper that resolves the project root and runs the CLI entry point.
 set -euo pipefail
 

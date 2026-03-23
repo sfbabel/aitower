@@ -1,5 +1,5 @@
 /**
- * Unix socket client for connecting to exocortexd.
+ * Unix socket client for connecting to aitowerd.
  *
  * JSON-lines protocol over a Unix domain socket.
  */
@@ -9,7 +9,7 @@ import { existsSync } from "fs";
 import type { Command, Event, QueueTiming } from "./protocol";
 import type { ModelId, EffortLevel, ImageAttachment } from "./messages";
 import { DEFAULT_EFFORT } from "./messages";
-import { socketPath } from "@exocortex/shared/paths";
+import { socketPath } from "@aitower/shared/paths";
 
 export type EventHandler = (event: Event) => void;
 export type LlmCompleteCallback = (text: string) => void;
@@ -36,7 +36,7 @@ export class DaemonClient {
     return new Promise((resolve, reject) => {
       if (!existsSync(this.socketPath)) {
         reject(new Error(
-          "exocortexd socket not found. Is the daemon running?\n" +
+          "aitowerd socket not found. Is the daemon running?\n" +
           "Start it with: cd daemon && bun run start"
         ));
         return;

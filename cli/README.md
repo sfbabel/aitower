@@ -1,6 +1,6 @@
-# exo — Exocortex CLI
+# exo — aitower CLI
 
-A stateless, machine-friendly command-line interface to the Exocortex daemon (`exocortexd`).
+A stateless, machine-friendly command-line interface to the aitower daemon (`aitowerd`).
 
 Designed for AI-to-AI interaction and scripting. Each invocation connects to the daemon via Unix socket, sends a command, waits for the response, and disconnects. The daemon owns all state — conversation IDs are the only handles.
 
@@ -113,7 +113,7 @@ Conversations created via the CLI are automatically titled with a `cli:` prefix 
 ## Architecture
 
 ```
-exo ──unix socket──▸ exocortexd ──▸ Claude API
+exo ──unix socket──▸ aitowerd ──▸ Claude API
                          │
                     state on disk
                     (conversations, config)

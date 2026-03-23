@@ -102,7 +102,7 @@ async function executeBrowse(input: Record<string, unknown>, signal?: AbortSigna
       log("info", `browse: fetching ${fetchUrl}`);
       const res = await fetch(fetchUrl, {
         headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; Exocortex/1.0)",
+          "User-Agent": "Mozilla/5.0 (compatible; aitower/1.0)",
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         },
         redirect: "follow",

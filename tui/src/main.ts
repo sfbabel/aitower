@@ -1,5 +1,5 @@
 /**
- * Exocortex TUI — terminal client for exocortexd.
+ * aitower TUI — terminal client for aitowerd.
  *
  * Connects to the daemon via Unix socket, displays a conversational UI,
  * and forwards user input. All AI, auth, and streaming logic lives in
@@ -15,7 +15,7 @@ import { clearPrompt } from "./promptline";
 import { tryCommand } from "./commands";
 import { expandMacros } from "./macros";
 import { render } from "./render";
-import { enter_alt, leave_alt, hide_cursor, show_cursor, enable_bracketed_paste, disable_bracketed_paste, enable_kitty_kbd, disable_kitty_kbd, set_cursor_color, reset_cursor_color } from "./terminal";
+import { enter_alt, leave_alt, hide_cursor, show_cursor, enable_bracketed_paste, disable_bracketed_paste, enable_kitty_kbd, disable_kitty_kbd, enable_mouse, disable_mouse, set_cursor_color, reset_cursor_color } from "./terminal";
 import { createInitialState, isStreaming, clearPendingAI } from "./state";
 import { createPendingAI, type ImageAttachment } from "./messages";
 import { handleEvent } from "./events";
@@ -106,6 +106,9 @@ function handleSubmit(): void {
           break;
         case "generate_title":
           if (state.convId) generateTitle(state.convId, state, daemon, scheduleRender);
+          break;
+        case "pin_conversation":
+          daemon.pinConversation(cmdResult.convId, cmdResult.pinned);
           break;
         case "theme_changed":
           // Re-emit the cursor color escape for the new theme
@@ -260,6 +263,8 @@ function handleKey(key: KeyEvent): void {
       break;
     case "handled":
       break;
+    case "noop":
+      return; // skip re-render
   }
 
   scheduleRender();
@@ -269,7 +274,7 @@ function handleKey(key: KeyEvent): void {
 
 function setupTerminal(): void {
   const cursorColorSeq = theme.cursorColor ? set_cursor_color(theme.cursorColor) : '';
-  process.stdout.write(enter_alt + hide_cursor + enable_bracketed_paste + enable_kitty_kbd + cursorColorSeq);
+  process.stdout.write(enter_alt + hide_cursor + enable_bracketed_paste + enable_kitty_kbd + enable_mouse + cursorColorSeq);
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
   process.stdin.resume();
   terminalSetUp = true;
@@ -279,7 +284,7 @@ function restoreTerminal(): void {
   if (!terminalSetUp) return;
   if (process.stdin.isTTY) process.stdin.setRawMode(false);
   const cursorResetSeq = theme.cursorColor ? reset_cursor_color : '';
-  process.stdout.write(disable_kitty_kbd + disable_bracketed_paste + show_cursor + cursorResetSeq + leave_alt);
+  process.stdout.write(disable_mouse + disable_kitty_kbd + disable_bracketed_paste + show_cursor + cursorResetSeq + leave_alt);
   terminalSetUp = false;
 }
 

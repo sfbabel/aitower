@@ -56,7 +56,7 @@ async function compressImage(
   originalBase64Size: number,
 ): Promise<{ base64: string; mediaType: string; compressedBytes: number } | { error: string }> {
   const { tmpdir } = await import("os");
-  const tmpOut = `${tmpdir()}/exocortex-compress-${Date.now()}.jpg`;
+  const tmpOut = `${tmpdir()}/aitower-compress-${Date.now()}.jpg`;
 
   try {
     for (const quality of COMPRESSION_QUALITIES) {

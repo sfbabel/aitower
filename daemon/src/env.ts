@@ -1,5 +1,5 @@
 /**
- * Load environment variables from ~/.config/exocortex/env into process.env.
+ * Load environment variables from ~/.config/aitower/env into process.env.
  *
  * Supports:
  *   KEY=value
@@ -15,7 +15,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { log } from "./log";
-import { configDir } from "@exocortex/shared/paths";
+import { configDir } from "@aitower/shared/paths";
 
 const ENV_PATH = join(configDir(), "env");
 

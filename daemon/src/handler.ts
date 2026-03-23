@@ -1,5 +1,5 @@
 /**
- * Command handler for exocortexd.
+ * Command handler for aitowerd.
  *
  * Routes IPC commands to the appropriate action. Thin dispatcher —
  * orchestration lives in orchestrator.ts, conversation data

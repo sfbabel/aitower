@@ -1,5 +1,5 @@
 /**
- * Streaming orchestration for exocortexd.
+ * Streaming orchestration for aitowerd.
  *
  * Wires the agent loop to the IPC layer: sets up callbacks,
  * runs the loop, handles errors/abort, flushes persistence,
@@ -15,7 +15,7 @@ import { getToolDefs, buildExecutor, summarizeTool, type ContextToolEnv } from "
 import * as convStore from "./conversations";
 import type { DaemonServer, ConnectedClient } from "./server";
 import type { StoredMessage, ApiContentBlock } from "./messages";
-import type { ImageAttachment } from "@exocortex/shared/messages";
+import type { ImageAttachment } from "@aitower/shared/messages";
 
 // ── Types ──────────────────────────────────────────────────────────
 

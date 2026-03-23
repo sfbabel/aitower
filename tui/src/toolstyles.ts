@@ -3,7 +3,7 @@
  *
  * Resolves tool display data for rendering. Uses daemon-provided
  * registry as the base, with optional user overrides for bash
- * sub-commands loaded from ~/.config/exocortex/tool-styles.json.
+ * sub-commands loaded from ~/.config/aitower/tool-styles.json.
  *
  * User overrides match the beginning of bash command strings.
  * Example config:
@@ -41,7 +41,7 @@ let userStyles: Record<string, UserToolStyle> = {};
 function loadUserStyles(): void {
   try {
     const xdg = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
-    const path = join(xdg, "exocortex", "tool-styles.json");
+    const path = join(xdg, "aitower", "tool-styles.json");
     const data = readFileSync(path, "utf8");
     userStyles = JSON.parse(data);
   } catch {

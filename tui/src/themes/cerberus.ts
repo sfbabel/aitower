@@ -1,8 +1,9 @@
 /**
- * Cerberus theme — red accents on gray.
+ * Cerberus theme — amber phosphor on dark.
  *
- * Accent: #d32f2f (Material Red 700)
- * Gray backgrounds, red highlights, warm muted tones.
+ * Matches the user's kitty terminal: amber (#F08020) foreground,
+ * near-black (#0D0500) background, CRT scanline aesthetic.
+ * All colors are amber-family: no blue, no green, just warm phosphor.
  */
 
 import type { Theme } from "../theme";
@@ -20,36 +21,37 @@ export const cerberus: Theme = {
   dim:      `${ESC}2m`,
   italic:   `${ESC}3m`,
 
-  // Foreground colors
-  accent:   `${ESC}38;2;211;47;47m`,     // #d32f2f
-  text:     `${ESC}38;2;224;224;224m`,    // #e0e0e0
-  muted:    `${ESC}38;2;102;102;102m`,    // #666666
-  error:    `${ESC}38;2;244;67;54m`,      // #f44336
-  warning:  `${ESC}38;2;255;167;38m`,     // #ffa726
-  success:  `${ESC}38;2;102;187;106m`,    // #66bb6a
-  prompt:   `${ESC}38;2;211;47;47m`,      // #d32f2f (red)
-  tool:     `${ESC}38;2;176;100;100m`,    // #b06464 (muted rose)
-  command:  `${ESC}38;2;239;154;154m`,    // #ef9a9a (light red)
+  // Foreground colors — amber phosphor palette
+  accent:   `${ESC}38;2;240;128;32m`,     // #F08020 — primary amber
+  text:     `${ESC}38;2;240;128;32m`,      // #F08020 — phosphor foreground
+  muted:    `${ESC}38;2;102;51;0m`,        // #663300 — dim amber
+  error:    `${ESC}38;2;224;64;32m`,       // #E04020 — hot ember
+  warning:  `${ESC}38;2;232;144;48m`,      // #E89030 — bright amber
+  success:  `${ESC}38;2;179;90;0m`,        // #B35A00 — warm amber-green
+  prompt:   `${ESC}38;2;240;128;32m`,      // #F08020 — amber
+  tool:     `${ESC}38;2;204;122;0m`,       // #CC7A00 — ochre
+  command:  `${ESC}38;2;242;136;32m`,      // #F28820 — bright phosphor
 
   // Vim mode indicators
-  vimNormal: `${ESC}38;2;211;47;47m`,     // #d32f2f (red)
-  vimInsert: `${ESC}38;2;255;107;107m`,   // #ff6b6b (coral)
-  vimVisual: `${ESC}38;2;183;28;28m`,     // #b71c1c (dark red)
+  vimNormal: `${ESC}38;2;240;128;32m`,     // #F08020 — amber
+  vimInsert: `${ESC}38;2;232;144;48m`,     // #E89030 — lighter amber
+  vimVisual: `${ESC}38;2;204;40;0m`,       // #CC2800 — deep ember
 
-  // Background colors
-  topbarBg:      `${ESC}48;2;211;47;47m`,    // #d32f2f (red accent as bg)
-  userBg:        `${ESC}48;2;37;37;37m`,     // #252525
-  sidebarBg:     `${ESC}48;2;26;26;26m`,     // #1a1a1a
-  sidebarSelBg:  `${ESC}48;2;51;51;51m`,     // #333333
-  cursorBg:      `${ESC}48;2;211;47;47m`,    // #d32f2f (red)
-  historyLineBg: `${ESC}48;2;37;37;37m`,     // #252525 (matches userBg)
-  selectionBg:   `${ESC}48;2;74;74;74m`,     // #4a4a4a
-  appBg:         `${ESC}48;2;20;20;20m`,     // #141414
-  cursorColor:   "#d32f2f",                  // matches accent / cursorBg
+  // Background colors — near-black with amber tints
+  topbarBg:      `${ESC}48;2;61;24;0m`,       // #3D1800 — dark amber bar
+  userBg:        `${ESC}48;2;26;10;0m`,        // #1A0A00 — slightly warm black
+  sidebarBg:     `${ESC}48;2;16;6;0m`,         // #100600 — near black
+  sidebarSelBg:  `${ESC}48;2;61;24;0m`,        // #3D1800 — selected highlight
+  sidebarHoverBg: `${ESC}48;2;35;15;0m`,       // #230F00 — subtle hover
+  cursorBg:      `${ESC}48;2;240;128;32m`,     // #F08020 — full amber
+  historyLineBg: `${ESC}48;2;26;10;0m`,        // #1A0A00 — matches userBg
+  selectionBg:   `${ESC}48;2;61;24;0m`,        // #3D1800 — amber selection
+  appBg:         "",                            // transparent — lets kitty scanlines show through
+  cursorColor:   "#F08020",                    // matches kitty cursor
 
   // Border colors
-  borderFocused:   `${ESC}38;2;211;47;47m`,  // #d32f2f (red)
-  borderUnfocused: `${ESC}38;2;85;85;85m`,   // #555555
+  borderFocused:   `${ESC}38;2;240;128;32m`,   // #F08020 — amber
+  borderUnfocused: `${ESC}38;2;61;24;0m`,      // #3D1800 — dim amber
 
   // Style end
   boldOff: `${ESC}22m`,

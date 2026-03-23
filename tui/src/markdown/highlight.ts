@@ -3,7 +3,7 @@
 // Designed for visual scanning in a TUI — not a full parser.
 // Ported from Mnemo project (https://github.com/yeyito/Mnemo)
 
-// --- ANSI Color Constants (Exocortex Whale Theme) ---
+// --- ANSI Color Constants (aitower Whale Theme) ---
 export const FG_WHITE = "\x1b[38;2;255;255;255m";
 const FG_SYN_KEYWORD = "\x1b[38;2;199;146;234m";   // #c792ea soft purple
 const FG_SYN_STRING = "\x1b[38;2;195;232;141m";     // #c3e88d warm green

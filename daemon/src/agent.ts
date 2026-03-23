@@ -1,5 +1,5 @@
 /**
- * Agent loop for exocortexd.
+ * Agent loop for aitowerd.
  *
  * Drives the stream → tool calls → execute → stream cycle.
  * Each invocation produces one AI Message (a sequence of blocks).

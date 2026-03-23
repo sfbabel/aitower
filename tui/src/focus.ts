@@ -12,17 +12,19 @@
 
 import type { KeyEvent } from "./input";
 import type { RenderState } from "./state";
+import { isStreaming } from "./state";
 import type { Action } from "./keybinds";
 import { resolveAction } from "./keybinds";
 import {
   handleChatKey,
+  scrollBy,
   scrollUp, scrollDown,
   scrollLineUp, scrollLineDown,
   scrollHalfUp, scrollHalfDown,
   scrollPageUp, scrollPageDown,
   scrollToTop, scrollToBottom,
 } from "./chat";
-import { handleSidebarKey, handleSidebarAction, handleSidebarMark, moveSelection, syncSelectedIndex, type SidebarKeyResult } from "./sidebar";
+import { handleSidebarKey, handleSidebarAction, handleSidebarMark, moveSelection, syncSelectedIndex, sidebarHitTest, type SidebarKeyResult } from "./sidebar";
 import { processKey, copyToClipboard, pasteFromClipboard, type VimContext } from "./vim";
 import { clampNormal } from "./vim/buffer";
 import { pushUndo, markInsertEntry, commitInsertSession, undo as undoFn, redo as redoFn } from "./undo";
@@ -37,7 +39,10 @@ import { handleMessageTextObject } from "./vim/message";
 import { dismissAutocomplete } from "./autocomplete";
 import { handleQueuePromptKey } from "./queue";
 import { handleEditMessageKey, openEditMessageModal } from "./editmessage";
+import { handleContextMenuKey, buildSidebarMenu } from "./contextmenu";
+import { PROMPT_PREFIX_LEN } from "./render";
 import { readClipboardImage } from "./clipboard";
+import type { MouseSelection } from "./state";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -45,6 +50,7 @@ export type PanelFocus = "sidebar" | "chat";
 
 export type KeyResult =
   | { type: "handled" }
+  | { type: "noop" }    // nothing changed — skip re-render
   | { type: "submit" }
   | { type: "quit" }
   | { type: "abort" }
@@ -62,9 +68,366 @@ export type KeyResult =
   | { type: "edit_message_confirm" }
   | { type: "edit_message_cancel" };
 
+// ── Shared helpers ─────────────────────────────────────────────────
+
+/** Switch focus to chat in normal mode (for reading). */
+function focusChat(state: RenderState): void {
+  state.panelFocus = "chat";
+  state.chatFocus = "prompt";
+  state.sidebar.open = false;
+  state.vim.mode = "normal";
+}
+
+/** Toggle sidebar open/close, sync focus and selection. */
+function toggleSidebar(state: RenderState): void {
+  state.sidebar.open = !state.sidebar.open;
+  state.panelFocus = state.sidebar.open ? "sidebar" : "chat";
+  if (state.panelFocus === "sidebar") {
+    state.vim.mode = "normal";
+    if (state.convId) {
+      state.sidebar.selectedId = state.convId;
+      syncSelectedIndex(state.sidebar);
+    }
+  }
+}
+
+// ── Mouse selection helpers ──────────────────────────────────────
+
+/**
+ * Convert a screen position (1-based row/col) in the message area to
+ * a history line index and visible column. Returns null if the
+ * coordinates don't map to a valid history line.
+ */
+function screenToHistoryPos(
+  screenRow: number,
+  screenCol: number,
+  state: RenderState,
+): { lineIdx: number; visCol: number } | null {
+  const L = state.layout;
+  const lines = state.historyLines;
+  const totalLines = lines.length;
+  const messageAreaStart = 3;
+  const messageAreaHeight = L.sepAbove - messageAreaStart;
+
+  const i = screenRow - messageAreaStart;
+  if (i < 0 || i >= messageAreaHeight) return null;
+
+  let viewStart: number;
+  if (state.scrollOffset === 0) {
+    viewStart = Math.max(0, totalLines - messageAreaHeight);
+  } else {
+    viewStart = Math.max(0, totalLines - messageAreaHeight - state.scrollOffset);
+  }
+
+  const lineIdx = viewStart + i;
+  if (lineIdx >= totalLines) return null;
+
+  // Visible column: screen col minus the chat-area start
+  const visCol = Math.max(0, screenCol - L.chatCol);
+  return { lineIdx, visCol };
+}
+
+/**
+ * Extract the mouse-selected text from historyLines.
+ * Handles single-line and multi-line selections, stripping ANSI.
+ */
+function getMouseSelectionText(sel: MouseSelection, state: RenderState): string {
+  const lines = state.historyLines;
+  const wrapCont = state.historyWrapContinuation;
+
+  // Normalize: startRow/Col is earlier in the buffer
+  let startRow: number, startCol: number, endRow: number, endCol: number;
+  if (sel.anchorRow < sel.endRow || (sel.anchorRow === sel.endRow && sel.anchorCol <= sel.endCol)) {
+    startRow = sel.anchorRow; startCol = sel.anchorCol;
+    endRow = sel.endRow; endCol = sel.endCol;
+  } else {
+    startRow = sel.endRow; startCol = sel.endCol;
+    endRow = sel.anchorRow; endCol = sel.anchorCol;
+  }
+
+  if (startRow === endRow) {
+    const plain = stripAnsi(lines[startRow] ?? "");
+    return plain.slice(startCol, endCol + 1);
+  }
+
+  // Multi-line
+  const result: string[] = [];
+  for (let r = startRow; r <= endRow; r++) {
+    const plain = stripAnsi(lines[r] ?? "");
+    if (r === startRow) {
+      result.push(plain.slice(startCol).trimEnd());
+    } else if (r === endRow) {
+      const text = plain.slice(0, endCol + 1).trimEnd();
+      // If this is a word-wrap continuation, join with space instead of newline
+      if (wrapCont[r]) {
+        result[result.length - 1] += (text ? " " + text : "");
+      } else {
+        result.push(text);
+      }
+    } else {
+      const text = plain.trim();
+      if (wrapCont[r]) {
+        result[result.length - 1] += (text ? " " + text : "");
+      } else {
+        result.push(text);
+      }
+    }
+  }
+  return result.join("\n");
+}
+
+/**
+ * Find the word boundaries around a position in a plain text string.
+ * Returns [start, end] inclusive indices. Used for right-click
+ * word-copy when there's no active drag selection.
+ */
+function wordBoundsAt(text: string, col: number): [number, number] {
+  if (col >= text.length) return [col, col];
+  // If on whitespace, return just the char
+  if (/\s/.test(text[col])) return [col, col];
+
+  let start = col;
+  let end = col;
+  const isWordChar = (ch: string) => /\w/.test(ch);
+  const startIsWord = isWordChar(text[col]);
+
+  while (start > 0 && (startIsWord ? isWordChar(text[start - 1]) : (!isWordChar(text[start - 1]) && !/\s/.test(text[start - 1])))) {
+    start--;
+  }
+  while (end < text.length - 1 && (startIsWord ? isWordChar(text[end + 1]) : (!isWordChar(text[end + 1]) && !/\s/.test(text[end + 1])))) {
+    end++;
+  }
+  return [start, end];
+}
+
+// ── Mouse routing ──────────────────────────────────────────────────
+
+function handleMouse(key: KeyEvent, state: RenderState): KeyResult {
+  const { row, col, button } = key;
+  if (!row || !col) return { type: "handled" };
+
+  const L = state.layout;
+  const inSidebar = state.sidebar.open && col <= L.sidebarWidth;
+  const inMessages = !inSidebar && row >= 3 && row < L.sepAbove;
+  const inPrompt = !inSidebar && row >= L.firstInputRow && row < L.sepBelow;
+
+  // ── Mouse move → drag selection or sidebar hover ───────────────
+  if (key.type === "mouse_move") {
+    // Active drag in message area (button field has bit 5 set for motion)
+    if (state.mouseSelection && !state.mouseSelection.finalized) {
+      const pos = screenToHistoryPos(row, col, state);
+      if (pos) {
+        state.mouseSelection.endRow = pos.lineIdx;
+        state.mouseSelection.endCol = pos.visCol;
+      }
+      return { type: "handled" };
+    }
+
+    const prevHover = state.sidebar.hoveredIndex;
+    if (inSidebar) {
+      state.sidebar.hoveredIndex = sidebarHitTest(row, state.sidebar);
+    } else {
+      state.sidebar.hoveredIndex = null;
+    }
+    // Only re-render if hover state actually changed
+    return state.sidebar.hoveredIndex !== prevHover ? { type: "handled" } : { type: "noop" };
+  }
+
+  // ── Mouse release → finalize drag selection ─────────────────────
+  if (key.type === "mouse_up") {
+    if (state.mouseSelection && !state.mouseSelection.finalized && button === 0) {
+      const pos = screenToHistoryPos(row, col, state);
+      if (pos) {
+        state.mouseSelection.endRow = pos.lineIdx;
+        state.mouseSelection.endCol = pos.visCol;
+      }
+      // Only keep selection if it spans at least one character
+      const s = state.mouseSelection;
+      if (s.anchorRow === s.endRow && s.anchorCol === s.endCol) {
+        state.mouseSelection = null;
+      } else {
+        state.mouseSelection.finalized = true;
+      }
+      return { type: "handled" };
+    }
+    return { type: "handled" };
+  }
+
+  // ── Scroll wheel ────────────────────────────────────────────────
+  if (key.type === "mouse_scroll_up" || key.type === "mouse_scroll_down") {
+    const delta = key.type === "mouse_scroll_up" ? 3 : -3;
+    if (inSidebar) {
+      moveSelection(state.sidebar, key.type === "mouse_scroll_up" ? -1 : 1);
+    } else {
+      scrollBy(state, delta);
+    }
+    return { type: "handled" };
+  }
+
+  // Only handle press events beyond this point
+  if (key.type !== "mouse_down") return { type: "handled" };
+
+  // ── Topbar buttons (row 1) ─────────────────────────────────────
+  // Layout: ≡ + Cerberus — ...
+  //         ^chatCol  ^chatCol+2
+
+  // ── `+` button → new conversation
+  if (row === 1 && button === 0 && col >= L.chatCol + 2 && col <= L.chatCol + 2) {
+    return { type: "new_conversation" };
+  }
+
+  // ── Hamburger icon → toggle sidebar
+  if (row === 1 && col >= L.chatCol && col <= L.chatCol + 1 && button === 0) {
+    toggleSidebar(state);
+    return { type: "handled" };
+  }
+
+  // Clear hover on any click (tooltip shouldn't linger)
+  state.sidebar.hoveredIndex = null;
+
+  // ── Sidebar clicks ──────────────────────────────────────────────
+  if (inSidebar) {
+    const convIdx = sidebarHitTest(row, state.sidebar);
+    if (convIdx === null) return { type: "handled" };
+
+    const conv = state.sidebar.conversations[convIdx];
+    if (!conv) return { type: "handled" };
+
+    // Right-click → open context menu
+    if (button === 2) {
+      state.sidebar.selectedIndex = convIdx;
+      state.sidebar.selectedId = conv.id;
+      state.contextMenu = {
+        items: buildSidebarMenu(conv),
+        selection: 0,
+        row, col,
+        convId: conv.id,
+        convIdx,
+      };
+      return { type: "handled" };
+    }
+
+    // Left-click → select, load, and switch to chat
+    state.sidebar.selectedIndex = convIdx;
+    state.sidebar.selectedId = conv.id;
+    focusChat(state);
+    return { type: "load_conversation", convId: conv.id };
+  }
+
+  // ── Message area interactions ──────────────────────────────────
+  if (inMessages) {
+    const pos = screenToHistoryPos(row, col, state);
+
+    // Right-click → copy selection or word
+    if (button === 2) {
+      if (state.mouseSelection) {
+        // Copy the drag selection
+        const text = getMouseSelectionText(state.mouseSelection, state);
+        if (text.trim()) copyToClipboard(text);
+        state.mouseSelection = null;
+      } else if (pos) {
+        // No selection → copy word under cursor
+        const plain = stripAnsi(state.historyLines[pos.lineIdx] ?? "");
+        const [wStart, wEnd] = wordBoundsAt(plain, pos.visCol);
+        const word = plain.slice(wStart, wEnd + 1).trim();
+        if (word) copyToClipboard(word);
+      }
+      return { type: "handled" };
+    }
+
+    // Left-click → start drag selection
+    if (button === 0 && pos) {
+      state.mouseSelection = {
+        anchorRow: pos.lineIdx,
+        anchorCol: pos.visCol,
+        endRow: pos.lineIdx,
+        endCol: pos.visCol,
+        finalized: false,
+      };
+      return { type: "handled" };
+    }
+
+    return { type: "handled" };
+  }
+
+  // ── Prompt click → focus prompt + place cursor ─────────────────
+  if (inPrompt) {
+    state.mouseSelection = null; // clear any message-area selection
+    state.panelFocus = "chat";
+    state.chatFocus = "prompt";
+    if (state.vim.mode !== "insert") state.vim.mode = "insert";
+
+    // Approximate cursor placement from click position
+    const maxWidth = (state.cols - L.sidebarWidth) - PROMPT_PREFIX_LEN;
+    if (maxWidth > 0) {
+      const clickedLine = (row - L.firstInputRow) + state.promptScrollOffset;
+      const clickedCol = Math.max(0, col - L.chatCol - PROMPT_PREFIX_LEN);
+      const charPos = clickedLine * maxWidth + clickedCol;
+      state.cursorPos = Math.min(Math.max(0, charPos), state.inputBuffer.length);
+    }
+    return { type: "handled" };
+  }
+
+  // ── Status bar click during streaming → abort ─────────────────
+  if (row > L.sepBelow && isStreaming(state) && button === 0) {
+    return { type: "abort" };
+  }
+
+  return { type: "handled" };
+}
+
+// ── Context menu action execution ─────────────────────────────────
+
+function executeContextMenuAction(action: string, state: RenderState): KeyResult {
+  const menu = state.contextMenu!;
+  const convId = menu.convId;
+  const convIdx = menu.convIdx;
+  state.contextMenu = null; // close menu
+
+  // Ensure sidebar selection is on the target conversation
+  state.sidebar.selectedIndex = convIdx;
+  state.sidebar.selectedId = convId;
+
+  switch (action) {
+    case "pin":
+      return mapSidebarResult(handleSidebarAction("pin", state.sidebar), state);
+    case "mark":
+      return mapSidebarResult(handleSidebarAction("mark", state.sidebar), state);
+    case "clone":
+      return { type: "clone_conversation", convId };
+    case "delete":
+      // Context menu click = clear intent to delete, skip the d-d confirmation
+      return { type: "delete_conversation", convId };
+    default:
+      return { type: "handled" };
+  }
+}
+
 // ── Key routing ─────────────────────────────────────────────────────
 
 export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
+  // ── Context menu — intercept ALL input (mouse + keyboard) ─────
+  if (state.contextMenu) {
+    const cr = handleContextMenuKey(key, state);
+    if (cr.type === "cancel") {
+      state.contextMenu = null;
+      return { type: "handled" };
+    }
+    if (cr.type === "confirm") {
+      return executeContextMenuAction(cr.action, state);
+    }
+    return { type: "handled" };
+  }
+
+  // ── Mouse events — route by screen position ─────────────────────
+  if (key.type === "mouse_down" || key.type === "mouse_up" || key.type === "mouse_move"
+    || key.type === "mouse_scroll_up" || key.type === "mouse_scroll_down") {
+    return handleMouse(key, state);
+  }
+
+  // Any keyboard input clears mouse drag selection
+  if (state.mouseSelection) state.mouseSelection = null;
+
   // ── Queue prompt modal — intercept all keys when showing ──────
   if (state.queuePrompt) {
     const qr = handleQueuePromptKey(key, state);
@@ -105,16 +468,7 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
     case "quit":
       return { type: "quit" };
     case "sidebar_toggle":
-      state.sidebar.open = !state.sidebar.open;
-      state.panelFocus = state.sidebar.open ? "sidebar" : "chat";
-      if (state.panelFocus === "sidebar") {
-        state.vim.mode = "normal";
-        // Default cursor to the current conversation
-        if (state.convId) {
-          state.sidebar.selectedId = state.convId;
-          syncSelectedIndex(state.sidebar);
-        }
-      }
+      toggleSidebar(state);
       return { type: "handled" };
     case "focus_cycle":
       if (state.sidebar.open) {
@@ -212,7 +566,7 @@ export function handleFocusedKey(key: KeyEvent, state: RenderState): KeyResult {
   if (state.panelFocus === "sidebar" && state.sidebar.open
       && state.vim.mode === "normal"
       && key.type === "char" && key.char && /^[0-9]$/.test(key.char)) {
-    return mapSidebarResult(handleSidebarMark(state.sidebar, parseInt(key.char, 10)));
+    return mapSidebarResult(handleSidebarMark(state.sidebar, parseInt(key.char, 10)), state);
   }
 
   // ── Vim processing ─────────────────────────────────────────────
@@ -362,6 +716,13 @@ function handleVimAction(action: string, state: RenderState): KeyResult {
   switch (action) {
     case "quit":
       return { type: "quit" };
+    case "abort":
+      return { type: "abort" };
+    case "sidebar_toggle":
+      toggleSidebar(state);
+      return { type: "handled" };
+    case "new_conversation":
+      return { type: "new_conversation" };
     case "focus_prompt":
       // Vim i/a in sidebar/history → focus prompt + enter insert
       state.vim.mode = "insert";
@@ -383,6 +744,12 @@ function handleVimAction(action: string, state: RenderState): KeyResult {
     case "move_down":
     case "clone":
       return trySidebarAction(action, state);
+    case "scroll_up":
+      scrollUp(state);
+      return { type: "handled" };
+    case "scroll_down":
+      scrollDown(state);
+      return { type: "handled" };
     case "scroll_top":
     case "scroll_bottom":
       handleScrollAction(action as Action, state);
@@ -400,13 +767,14 @@ function handleVimAction(action: string, state: RenderState): KeyResult {
  */
 function trySidebarAction(action: string, state: RenderState): KeyResult {
   if (state.panelFocus !== "sidebar") return { type: "handled" };
-  return mapSidebarResult(handleSidebarAction(action, state.sidebar));
+  return mapSidebarResult(handleSidebarAction(action, state.sidebar), state);
 }
 
 /** Map a SidebarKeyResult to a KeyResult. */
-function mapSidebarResult(result: SidebarKeyResult): KeyResult {
+function mapSidebarResult(result: SidebarKeyResult, state: RenderState): KeyResult {
   switch (result.type) {
     case "select":
+      focusChat(state);
       return { type: "load_conversation", convId: result.convId };
     case "handled":
     case "unhandled":
@@ -514,7 +882,7 @@ function handleSidebarFocused(key: KeyEvent, state: RenderState): KeyResult {
     return { type: "handled" };
   }
 
-  return mapSidebarResult(result);
+  return mapSidebarResult(result, state);
 }
 
 // ── Chat panel (non-vim path) ──────────────────────────────────────

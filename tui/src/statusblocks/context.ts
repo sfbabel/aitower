@@ -4,7 +4,7 @@
 
 import type { RenderState } from "../state";
 import type { StatusBlock } from "../statusline";
-import { MAX_CONTEXT } from "@exocortex/shared/messages";
+import { MAX_CONTEXT } from "@aitower/shared/messages";
 import { theme } from "../theme";
 
 function formatTokenCount(n: number): string {

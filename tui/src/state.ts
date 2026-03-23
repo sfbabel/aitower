@@ -53,10 +53,46 @@ export interface EditMessageState {
   scrollOffset: number;     // for scrolling long lists
 }
 
-/** Cached layout values — set by the renderer, read by scroll functions. */
+// ── Context menu types ──────────────────────────────────────────────
+
+export interface ContextMenuItem {
+  label: string;
+  action: string;
+}
+
+export interface ContextMenuState {
+  items: ContextMenuItem[];
+  selection: number;
+  row: number;        // screen anchor (1-based)
+  col: number;        // screen anchor (1-based)
+  convId: string;     // conversation this menu targets
+  convIdx: number;    // sidebar index
+}
+
+/** Mouse drag selection in the message area. */
+export interface MouseSelection {
+  /** History line index where drag started. */
+  anchorRow: number;
+  /** Visible column where drag started. */
+  anchorCol: number;
+  /** History line index of current drag end. */
+  endRow: number;
+  /** Visible column of current drag end. */
+  endCol: number;
+  /** Whether the selection is finalized (mouse released). */
+  finalized: boolean;
+}
+
+/** Cached layout values — set by the renderer, read by scroll and mouse functions. */
 export interface LayoutCache {
   totalLines: number;      // total rendered message lines
   messageAreaHeight: number; // visible rows for messages
+  // Mouse targeting (1-based row/col)
+  sidebarWidth: number;    // 0 when sidebar is closed
+  chatCol: number;         // first column of chat area
+  sepAbove: number;        // separator row above input
+  firstInputRow: number;   // first row of prompt input
+  sepBelow: number;        // separator row below input
 }
 
 export interface RenderState {
@@ -115,6 +151,10 @@ export interface RenderState {
   queuedMessages: QueuedMessage[];
   /** Edit message modal — non-null when the modal is showing. */
   editMessagePrompt: EditMessageState | null;
+  /** Right-click context menu — non-null when visible. */
+  contextMenu: ContextMenuState | null;
+  /** Mouse drag selection in the message area (null when inactive). */
+  mouseSelection: MouseSelection | null;
   /** Number of pendingAI blocks already finalized into split AI messages
    *  (from next-turn queued message injection during streaming). */
   pendingAISplitOffset: number;
@@ -151,7 +191,7 @@ export function createInitialState(): RenderState {
     chatFocus: "prompt",
     sidebar: createSidebarState(),
     vim: createVimState(),
-    layout: { totalLines: 0, messageAreaHeight: 0 },
+    layout: { totalLines: 0, messageAreaHeight: 0, sidebarWidth: 0, chatCol: 1, sepAbove: 0, firstInputRow: 0, sepBelow: 0 },
     pendingSend: { active: false, text: "" },
     systemMessageBuffer: [],
     toolRegistry: [],
@@ -167,6 +207,8 @@ export function createInitialState(): RenderState {
     queuePrompt: null,
     queuedMessages: [],
     editMessagePrompt: null,
+    contextMenu: null,
+    mouseSelection: null,
     pendingAISplitOffset: 0,
     pendingImages: [],
   };

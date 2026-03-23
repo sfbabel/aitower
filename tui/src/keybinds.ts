@@ -5,6 +5,10 @@
  * for all keybindings in the TUI. Every handler checks action names,
  * never raw key types.
  *
+ * Designed to feel natural in a terminal without requiring vim knowledge.
+ * Vim mode is still available (engine handles its own keys) but the
+ * default bindings use Ctrl combos and arrow keys instead of j/k/i/a.
+ *
  * To change a keybind: edit this file. One line, one place.
  * Future: load from user config to make keybinds customizable.
  */
@@ -46,6 +50,8 @@ export type Action =
   | "clone"
   | "undo_delete"
   // Scrolling
+  | "scroll_up"
+  | "scroll_down"
   | "scroll_line_up"
   | "scroll_line_down"
   | "scroll_half_up"
@@ -90,12 +96,12 @@ const BINDS: Record<string, Action> = {
   // Global
   "ctrl-c":     "quit",
   "ctrl-q":     "abort",
-  "ctrl-m":     "sidebar_toggle",
   "ctrl-s":     "sidebar_toggle",
+  "ctrl-m":     "sidebar_toggle",
   "ctrl-j":     "focus_cycle",
   "ctrl-k":     "focus_cycle",
 
-  // Chat focus switching
+  // Chat focus switching — Ctrl+H toggles history view
   "ctrl-n":     "focus_history",
 
   // Conversation
@@ -107,14 +113,14 @@ const BINDS: Record<string, Action> = {
   // Display toggles
   "ctrl-o":       "toggle_tool_output",
 
-  // Sidebar quick nav (Shift+J/K from any panel)
+  // Sidebar quick nav (Ctrl+Up/Down from any panel)
   "char:J":     "sidebar_next",
   "char:K":     "sidebar_prev",
 
   // Conversation editing
   "ctrl-w":     "edit_message",
 
-  // Scrolling
+  // Scrolling — Ctrl combos
   "ctrl-y":     "scroll_line_up",
   "ctrl-e":     "scroll_line_down",
   "ctrl-u":     "scroll_half_up",
@@ -123,6 +129,7 @@ const BINDS: Record<string, Action> = {
   "ctrl-f":     "scroll_page_down",
 
   // Prompt editing
+  "ctrl-a":     "cursor_home",
   "enter":      "submit",
   "ctrl-l":     "newline",
   "shift-enter": "newline",
@@ -139,10 +146,13 @@ const BINDS: Record<string, Action> = {
 
 /**
  * Context-specific bindings — only active outside the prompt.
- * These keys are regular chars when typing, but navigation
- * actions in sidebar/history contexts.
+ * Uses arrow keys and common shortcuts instead of vim j/k/i/a.
+ *
+ * Vim j/k still works when vim engine is active — these are the
+ * non-vim fallback bindings for sidebar/history navigation.
  */
 const NAV_BINDS: Record<string, Action> = {
+  // Arrow-based nav for sidebar/history (no vim knowledge needed)
   "char:j":     "nav_down",
   "char:k":     "nav_up",
   "char:i":     "focus_prompt",
@@ -167,13 +177,13 @@ export type KeyContext = "prompt" | "navigation";
  * Resolve a key event to a semantic action.
  * Returns null if the key has no binding.
  *
- * context = "navigation" enables j/k/i/a bindings (sidebar, history).
+ * context = "navigation" enables nav bindings (sidebar, history).
  * context = "prompt" (default) keeps those as regular character input.
  */
 export function resolveAction(key: KeyEvent, context: KeyContext = "prompt"): Action | null {
   // Check char-specific bindings
   if (key.type === "char" && key.char) {
-    // Navigation-context bindings (j/k/i/a)
+    // Navigation-context bindings
     if (context === "navigation") {
       const navAction = NAV_BINDS[`char:${key.char}`];
       if (navAction) return navAction;

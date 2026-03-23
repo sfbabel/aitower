@@ -1,12 +1,12 @@
-# Exocortex
+# aitower
 
 A daemon-driven AI assistant with a clean client/server architecture.
 
 ```
 ┌─────────────┐                              ┌──────────────┐
-│  exocortex  │         Unix Socket          │              │
+│  aitower  │         Unix Socket          │              │
 │    (TUI)    │◄────────────────────────────►│              │
-│  for humans │   Commands ──►               │  exocortexd  │
+│  for humans │   Commands ──►               │  aitowerd  │
 └─────────────┘          ◄── Events          │   (daemon)   │
                                              │              │
 ┌─────────────┐    (JSON-lines protocol)     │              │
@@ -27,26 +27,26 @@ A daemon-driven AI assistant with a clean client/server architecture.
 Requires [Bun](https://bun.sh) and systemd (Arch Linux).
 
 ```bash
-git clone https://github.com/Yeyito777/Exocortex.git
-cd Exocortex
+git clone https://github.com/Yeyito777/aitower.git
+cd aitower
 make install
 ```
 
 This will:
 - Install dependencies (`bun install`)
-- Symlink `exocortexd`, `exocortex`, and `exo` into `~/.local/bin/`
+- Symlink `aitowerd`, `aitower`, and `exo` into `~/.local/bin/`
 - Install and start a systemd user service for the daemon
 
 Then authenticate (one-time):
 
 ```bash
-exocortexd login
+aitowerd login
 ```
 
 Launch the TUI:
 
 ```bash
-exocortex
+aitower
 ```
 
 > **Note:** Make sure `~/.local/bin` is in your `PATH`.
@@ -126,8 +126,8 @@ See `shared/src/protocol.ts` — the single source of truth for the IPC contract
 
 ```
 bin/
-├── exocortexd         Daemon launcher
-├── exocortex          TUI launcher
+├── aitowerd         Daemon launcher
+├── aitower          TUI launcher
 └── exo                CLI launcher
 
 shared/

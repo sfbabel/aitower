@@ -9,8 +9,8 @@
 
 import { connect, type Socket } from "net";
 import { existsSync } from "fs";
-import { socketPath } from "@exocortex/shared/paths";
-import type { Command, Event } from "@exocortex/shared/protocol";
+import { socketPath } from "@aitower/shared/paths";
+import type { Command, Event } from "@aitower/shared/protocol";
 
 export class Connection {
   private socket: Socket | null = null;
@@ -22,7 +22,7 @@ export class Connection {
     const path = socketPath();
     if (!existsSync(path)) {
       throw new Error(
-        "exocortexd socket not found. Is the daemon running?\n" +
+        "aitowerd socket not found. Is the daemon running?\n" +
         "Start it with: cd daemon && bun run start"
       );
     }

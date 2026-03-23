@@ -1,5 +1,5 @@
 /**
- * exocortexd — the Exocortex daemon.
+ * aitowerd — the aitower daemon.
  *
  * A persistent background process that owns all AI state and exposes
  * a Unix socket for clients (TUI, future GUIs, scripts) to connect to.
@@ -21,7 +21,7 @@ import { createHandler } from "./handler";
 import { handleLogin } from "./cli";
 import * as convStore from "./conversations";
 import { startScheduler, stopScheduler, getCronDir, getJobs } from "./scheduler";
-import { socketPath, pidPath, runtimeDir, worktreeName } from "@exocortex/shared/paths";
+import { socketPath, pidPath, runtimeDir, worktreeName } from "@aitower/shared/paths";
 
 // ── Paths ───────────────────────────────────────────────────────────
 
@@ -62,10 +62,10 @@ async function isAlreadyRunning(): Promise<boolean> {
 // ── Daemon startup ──────────────────────────────────────────────────
 
 async function startDaemon(): Promise<void> {
-  log("info", "exocortexd: starting");
+  log("info", "aitowerd: starting");
 
   if (await isAlreadyRunning()) {
-    console.error("  ✗ exocortexd is already running");
+    console.error("  ✗ aitowerd is already running");
     process.exit(1);
   }
 
@@ -80,7 +80,7 @@ async function startDaemon(): Promise<void> {
 
   // Graceful shutdown
   const shutdown = async () => {
-    log("info", "exocortexd: shutting down");
+    log("info", "aitowerd: shutting down");
     stopScheduler();
     convStore.flushAll();
     await server.stop();
@@ -104,13 +104,13 @@ async function startDaemon(): Promise<void> {
 
   const wt = worktreeName();
   const cronJobs = getJobs();
-  console.log(`\n  exocortexd running (pid ${process.pid})${wt ? ` [worktree: ${wt}]` : ""}`);
+  console.log(`\n  aitowerd running (pid ${process.pid})${wt ? ` [worktree: ${wt}]` : ""}`);
   console.log(`  socket: ${SOCKET_PATH}`);
   console.log(`  auth:   ${authOk ? `✓ ${auth?.profile?.email ?? "authenticated"}` : "✗ not authenticated — run: bun run login"}`);
   console.log(`  cron:   ${cronJobs.length} job(s) in ${getCronDir()}`);
   console.log(`\n  Waiting for connections...\n`);
 
-  log("info", `exocortexd: ready on ${SOCKET_PATH} (auth=${!!authOk}, cron=${cronJobs.length})`);
+  log("info", `aitowerd: ready on ${SOCKET_PATH} (auth=${!!authOk}, cron=${cronJobs.length})`);
 }
 
 // ── Main ────────────────────────────────────────────────────────────
@@ -124,7 +124,7 @@ if (command === "login") {
   });
 } else {
   startDaemon().catch((err) => {
-    log("error", `exocortexd: fatal: ${err.stack ?? err.message}`);
+    log("error", `aitowerd: fatal: ${err.stack ?? err.message}`);
     console.error(`\n  ✗ Failed to start: ${err.message}\n`);
     process.exit(1);
   });

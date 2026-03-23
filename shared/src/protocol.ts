@@ -1,8 +1,8 @@
 /**
- * @exocortex/shared — IPC protocol.
+ * @aitower/shared — IPC protocol.
  *
  * The single source of truth for the wire contract between
- * exocortexd and its clients.
+ * aitowerd and its clients.
  *
  * Transport: Unix domain socket, newline-delimited JSON.
  * Commands flow client → daemon. Events flow daemon → client.

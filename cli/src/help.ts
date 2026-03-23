@@ -8,7 +8,7 @@
 const b = (s: string) => `\x1b[1m${s}\x1b[0m`;
 
 export function printHelp(): void {
-  process.stdout.write(`${b("exo")} — Exocortex CLI client
+  process.stdout.write(`${b("exo")} — aitower CLI client
 
 ${b("USAGE")}
   exo "message"                     Send a message (new conversation)

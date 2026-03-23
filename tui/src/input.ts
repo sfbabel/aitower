@@ -8,7 +8,7 @@ export interface KeyEvent {
   type: "char" | "enter" | "tab" | "backtab" | "backspace" | "delete"
       | "left" | "right" | "home" | "end"
       | "up" | "down"
-      | "ctrl-b" | "ctrl-c" | "ctrl-d" | "ctrl-e" | "ctrl-f"
+      | "ctrl-a" | "ctrl-b" | "ctrl-c" | "ctrl-d" | "ctrl-e" | "ctrl-f"
       | "ctrl-j" | "ctrl-k" | "ctrl-l" | "ctrl-m" | "ctrl-n"
       | "ctrl-o" | "ctrl-q" | "ctrl-r" | "ctrl-s" | "ctrl-u" | "ctrl-v" | "ctrl-w" | "ctrl-y"
       | "ctrl-shift-o"
@@ -17,10 +17,15 @@ export interface KeyEvent {
       | "f20" | "f21" | "f22" | "f23" | "f24"
       | "escape"
       | "paste"
+      | "mouse_down" | "mouse_up" | "mouse_move" | "mouse_scroll_up" | "mouse_scroll_down"
       | "unknown";
   char?: string;
   /** For paste events: the full pasted text. */
   text?: string;
+  /** Mouse fields (1-based screen coordinates). */
+  button?: number;  // 0=left, 1=middle, 2=right
+  row?: number;
+  col?: number;
 }
 
 /**
@@ -39,6 +44,7 @@ const CSI_U_MAP: Record<string, KeyEvent["type"]> = {
   "27":    "escape",          // Escape (ESC=27, no modifiers)
 
   // Ctrl+letter keys — kitty sends these as CSI u instead of raw bytes 1-26
+  "97;5":  "ctrl-a",         // Ctrl+A (a=97)
   "98;5":  "ctrl-b",         // Ctrl+B (b=98)
   "99;5":  "ctrl-c",         // Ctrl+C (c=99)
   "100;5": "ctrl-d",         // Ctrl+D (d=100)
@@ -157,6 +163,7 @@ export function parseKeys(data: Buffer | string): KeyEvent[] {
     // Tab
     if (code === 9)  { events.push({ type: "tab" }); i++; continue; }
     // Ctrl keys (byte order)
+    if (code === 1)  { events.push({ type: "ctrl-a" }); i++; continue; }
     if (code === 2)  { events.push({ type: "ctrl-b" }); i++; continue; }
     if (code === 3)  { events.push({ type: "ctrl-c" }); i++; continue; }
     if (code === 4)  { events.push({ type: "ctrl-d" }); i++; continue; }
@@ -201,6 +208,27 @@ export function parseKeys(data: Buffer | string): KeyEvent[] {
             // Unknown CSI u — skip
             i += seqLen;
             continue;
+          }
+
+          // SGR mouse: ESC [ < btn;col;row M/m
+          if (params.startsWith("<") && (final === "M" || final === "m")) {
+            const parts = params.slice(1).split(";");
+            const btn = parseInt(parts[0], 10);
+            const mCol = parseInt(parts[1], 10);
+            const mRow = parseInt(parts[2], 10);
+            if (btn === 64) {
+              events.push({ type: "mouse_scroll_up", row: mRow, col: mCol });
+            } else if (btn === 65) {
+              events.push({ type: "mouse_scroll_down", row: mRow, col: mCol });
+            } else if (btn & 32) {
+              // Motion event (bit 5 set) — hover or drag
+              events.push({ type: "mouse_move", button: btn & 3, row: mRow, col: mCol });
+            } else if (final === "m") {
+              events.push({ type: "mouse_up", button: btn & 3, row: mRow, col: mCol });
+            } else {
+              events.push({ type: "mouse_down", button: btn & 3, row: mRow, col: mCol });
+            }
+            i += seqLen; continue;
           }
 
           // Standard CSI sequences

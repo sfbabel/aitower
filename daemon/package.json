@@ -1,5 +1,5 @@
 {
-  "name": "exocortex-daemon",
+  "name": "aitower-daemon",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
@@ -8,7 +8,7 @@
     "login": "bun run src/main.ts login"
   },
   "dependencies": {
-    "@exocortex/shared": "workspace:*"
+    "@aitower/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

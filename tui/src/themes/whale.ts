@@ -1,5 +1,5 @@
 /**
- * Whale theme — the default Exocortex palette.
+ * Whale theme — the default aitower palette.
  *
  * Accent: #1d9bf0 (Twitter blue)
  * Dark background, muted grays, clean contrast.
@@ -41,6 +41,7 @@ export const whale: Theme = {
   userBg:        `${ESC}48;2;9;13;53m`,       // #090d35
   sidebarBg:     `${ESC}48;2;3;8;20m`,        // #030814
   sidebarSelBg:  `${ESC}48;2;15;25;60m`,      // #0f193c
+  sidebarHoverBg: `${ESC}48;2;10;18;42m`,     // #0a122a — subtle hover
   cursorBg:      `${ESC}48;2;72;202;228m`,    // #48cae4 (matches vimNormal)
   historyLineBg: `${ESC}48;2;9;13;53m`,     // #090d35 (matches userBg)
   selectionBg:   `${ESC}48;2;79;82;88m`,    // #4f5258

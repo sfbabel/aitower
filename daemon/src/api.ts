@@ -20,7 +20,7 @@ export { AuthError };
 const API_VERSION = "2023-06-01";
 // IMPORTANT: User-Agent, beta headers, and metadata.user_id must mirror Claude
 // Code exactly. The API uses these for request routing and priority — using a
-// custom name (e.g. "exocortex/0.1.0") causes consistent load shedding
+// custom name (e.g. "aitower/0.1.0") causes consistent load shedding
 // (overloaded_error). Update these when Claude Code releases a new version.
 // See reference/api-request-identity.md for the full story.
 const CLAUDE_CODE_VERSION = "2.1.76";

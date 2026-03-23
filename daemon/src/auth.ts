@@ -1,5 +1,5 @@
 /**
- * OAuth authentication for exocortexd.
+ * OAuth authentication for aitowerd.
  *
  * Handles the full PKCE login flow against claude.ai/platform.claude.com,
  * token refresh, and profile fetching.

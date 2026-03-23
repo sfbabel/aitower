@@ -19,8 +19,11 @@ const KEYMAP: KeymapEntry[] = [
   // Motions
   { mode: "normal", context: "prompt", key: "h",  command: { type: "motion", name: "char_left" } },
   { mode: "normal", context: "prompt", key: "l",  command: { type: "motion", name: "char_right" } },
-  { mode: "normal", context: "prompt", key: "j",  command: { type: "motion", name: "line_down" } },
-  { mode: "normal", context: "prompt", key: "k",  command: { type: "motion", name: "line_up" } },
+  // j/k in prompt normal mode scroll the chat (not the prompt cursor).
+  // Prompt cursor line movement uses arrow keys. This matches the
+  // mental model: normal mode = reading the conversation.
+  { mode: "normal", context: "prompt", key: "j",  command: { type: "action", action: "scroll_down" } },
+  { mode: "normal", context: "prompt", key: "k",  command: { type: "action", action: "scroll_up" } },
   { mode: "normal", context: "prompt", key: "w",  command: { type: "motion", name: "word_forward" } },
   { mode: "normal", context: "prompt", key: "b",  command: { type: "motion", name: "word_backward" } },
   { mode: "normal", context: "prompt", key: "e",  command: { type: "motion", name: "word_end" } },
@@ -103,6 +106,16 @@ const KEYMAP: KeymapEntry[] = [
   { mode: "normal", context: "sidebar", key: "u",  command: { type: "action", action: "undo_delete" } },
   { mode: "normal", context: "sidebar", key: "i",  command: { type: "mode_change", mode: "insert" } },
   { mode: "normal", context: "sidebar", key: "a",  command: { type: "mode_change", mode: "insert" } },
+
+  // ── Normal mode: app shortcuts (all contexts) ──────────────────
+  //
+  // These replace Ctrl combos — keep hands on home row.
+  // Esc → then one key to do anything.
+
+  { mode: "normal", context: "*", key: "s",  command: { type: "action", action: "sidebar_toggle" } },
+  { mode: "normal", context: "*", key: "q",  command: { type: "action", action: "abort" } },
+  { mode: "normal", context: "*", key: "n",  command: { type: "action", action: "new_conversation" } },
+  { mode: "normal", context: "*", key: "Q",  command: { type: "action", action: "quit" } },
 
   // ── Visual mode: enter from normal ─────────────────────────────
   { mode: "normal", context: "prompt",  key: "v",  command: { type: "mode_change", mode: "visual" } },

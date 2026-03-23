@@ -9,7 +9,7 @@
 import type { Block, MessageMetadata, ImageAttachment } from "./messages";
 import type { StoredMessage, ApiContentBlock } from "./messages";
 import type { ModelId, EffortLevel } from "./messages";
-import type { DisplayEntry } from "@exocortex/shared/protocol";
+import type { DisplayEntry } from "@aitower/shared/protocol";
 
 export type { DisplayEntry };
 

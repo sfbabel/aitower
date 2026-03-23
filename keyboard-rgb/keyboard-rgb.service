@@ -1,0 +1,13 @@
+[Unit]
+Description=Keyboard RGB Reactive Effects
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /home/cerberus/Exocortex/keyboard-rgb/keypress_rgb.py --effect reactive
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -1,5 +1,5 @@
 /**
- * Message and block model for the Exocortex TUI.
+ * Message and block model for the aitower TUI.
  *
  * Re-exports the shared domain types and adds TUI-specific
  * helpers for building messages during streaming.
@@ -7,11 +7,11 @@
 
 // ── Shared domain types (single source of truth) ────────────────────
 
-export * from "@exocortex/shared/messages";
+export * from "@aitower/shared/messages";
 
 // ── TUI helpers ─────────────────────────────────────────────────────
 
-import type { AIMessage, Block, ModelId, ConversationSummary } from "@exocortex/shared/messages";
+import type { AIMessage, Block, ModelId, ConversationSummary } from "@aitower/shared/messages";
 
 /** Resolve the display name for a conversation: title or fallback. */
 export function convDisplayName(

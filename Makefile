@@ -1,4 +1,4 @@
-# Exocortex — Makefile
+# Aitower — Makefile
 #
 # Usage:
 #   make install     Install everything (deps, commands, systemd service)
@@ -7,7 +7,7 @@
 PREFIX    := $(HOME)/.local
 BIN_DIR   := $(PREFIX)/bin
 UNIT_DIR  := $(HOME)/.config/systemd/user
-UNIT_NAME := exocortex-daemon.service
+UNIT_NAME := aitower-daemon.service
 REPO_DIR  := $(CURDIR)
 
 # ── Targets ──────────────────────────────────────────────────────────
@@ -16,16 +16,16 @@ REPO_DIR  := $(CURDIR)
         remove-links remove-service status
 
 install: check-bun deps links service
-	@printf '\n  ✓ Exocortex installed.\n'
-	@printf '    Commands: exocortexd, exocortex, exo\n'
-	@printf '    Service:  exocortex-daemon.service (systemd user)\n\n'
+	@printf '\n  ✓ Aitower installed.\n'
+	@printf '    Commands: aitowerd, aitower, exo\n'
+	@printf '    Service:  aitower-daemon.service (systemd user)\n\n'
 	@printf '  Next steps:\n'
 	@printf '    1. Ensure ~/.local/bin is in your PATH\n'
-	@printf '    2. Run: exocortexd login\n'
-	@printf '    3. Run: exocortex\n\n'
+	@printf '    2. Run: aitowerd login\n'
+	@printf '    3. Run: aitower\n\n'
 
 uninstall: remove-links remove-service
-	@printf '\n  ✓ Exocortex uninstalled.\n\n'
+	@printf '\n  ✓ Aitower uninstalled.\n\n'
 
 # ── Prerequisites ────────────────────────────────────────────────────
 
@@ -47,13 +47,13 @@ deps:
 
 links:
 	@mkdir -p $(BIN_DIR)
-	@ln -sf $(REPO_DIR)/bin/exocortexd $(BIN_DIR)/exocortexd
-	@ln -sf $(REPO_DIR)/bin/exocortex  $(BIN_DIR)/exocortex
+	@ln -sf $(REPO_DIR)/bin/aitowerd $(BIN_DIR)/aitowerd
+	@ln -sf $(REPO_DIR)/bin/aitower  $(BIN_DIR)/aitower
 	@ln -sf $(REPO_DIR)/bin/exo        $(BIN_DIR)/exo
-	@printf '  ✓ Linked exocortexd, exocortex, exo → $(BIN_DIR)/\n'
+	@printf '  ✓ Linked aitowerd, aitower, exo → $(BIN_DIR)/\n'
 
 remove-links:
-	@rm -f $(BIN_DIR)/exocortexd $(BIN_DIR)/exocortex $(BIN_DIR)/exo
+	@rm -f $(BIN_DIR)/aitowerd $(BIN_DIR)/aitower $(BIN_DIR)/exo
 	@printf '  ✓ Removed symlinks from $(BIN_DIR)/\n'
 
 # ── Systemd service ─────────────────────────────────────────────────
@@ -63,7 +63,7 @@ service:
 	@BUN_PATH=$$(command -v bun) && \
 	printf '%s\n' \
 		'[Unit]' \
-		'Description=Exocortex daemon (exocortexd)' \
+		'Description=Aitower daemon (aitowerd)' \
 		'' \
 		'[Service]' \
 		'Type=simple' \

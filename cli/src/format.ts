@@ -7,7 +7,7 @@
  * - stream: NDJSON events as they arrive (handled in main, not here)
  */
 
-import type { Block, DisplayEntry } from "@exocortex/shared/protocol";
+import type { Block, DisplayEntry } from "@aitower/shared/protocol";
 import type { CollectedResponse } from "./collect";
 
 // ── Text formatting ─────────────────────────────────────────────────

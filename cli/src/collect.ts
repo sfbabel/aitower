@@ -7,7 +7,7 @@
  */
 
 import type { Connection } from "./conn";
-import type { Event, Block } from "@exocortex/shared/protocol";
+import type { Event, Block } from "@aitower/shared/protocol";
 
 export interface CollectedResponse {
   convId: string;

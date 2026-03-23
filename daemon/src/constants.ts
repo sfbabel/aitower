@@ -1,11 +1,11 @@
 /**
- * Shared constants for exocortexd.
+ * Shared constants for aitowerd.
  *
  * Values used across multiple daemon modules live here to avoid
  * duplication and prevent circular imports.
  */
 
-export { MAX_CONTEXT } from "@exocortex/shared/messages";
+export { MAX_CONTEXT } from "@aitower/shared/messages";
 
 export const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
 

@@ -1,4 +1,4 @@
-// Markdown rendering for the Exocortex TUI.
+// Markdown rendering for the aitower TUI.
 // Re-exports public APIs from the markdown subsystem.
 
 // Primary entry point — wraps, formats, and renders markdown text

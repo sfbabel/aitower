@@ -1,5 +1,5 @@
 /**
- * Theme system for the Exocortex TUI.
+ * Theme system for the aitower TUI.
  *
  * Defines the Theme interface and exports the active theme.
  * Every file that needs colors imports from here — no hardcoded
@@ -49,6 +49,7 @@ export interface Theme {
   userBg: string;         // User message bubble
   sidebarBg: string;      // Sidebar body
   sidebarSelBg: string;   // Sidebar selected item
+  sidebarHoverBg: string;  // Sidebar hovered item
   cursorBg: string;       // Inline cursor (history, visual mode)
   historyLineBg: string;  // Selected line background in history
   selectionBg: string;    // Visual mode selection highlight
@@ -78,14 +79,14 @@ export type ThemeName = keyof typeof themes;
 
 function configDir(): string {
   const xdg = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
-  return join(xdg, "exocortex");
+  return join(xdg, "aitower");
 }
 
 function themeConfigPath(): string {
   return join(configDir(), "theme.json");
 }
 
-/** Read the persisted theme name from ~/.config/exocortex/theme.json. */
+/** Read the persisted theme name from ~/.config/aitower/theme.json. */
 function loadPersistedThemeName(): string | null {
   try {
     const data = JSON.parse(readFileSync(themeConfigPath(), "utf8"));
@@ -96,7 +97,7 @@ function loadPersistedThemeName(): string | null {
   return null;
 }
 
-/** Write the theme name to ~/.config/exocortex/theme.json. */
+/** Write the theme name to ~/.config/aitower/theme.json. */
 function persistThemeName(name: string): void {
   const dir = configDir();
   mkdirSync(dir, { recursive: true });

@@ -37,7 +37,7 @@ function truncLine(line: string, budget: number): string {
  * text to a temp file and return a head+tail preview with the file path.
  */
 function spillAndPreview(output: string, byteTruncated: boolean): string {
-  const spillPath = `/tmp/exocortex-bash-${Date.now()}.txt`;
+  const spillPath = `/tmp/aitower-bash-${Date.now()}.txt`;
   writeFileSync(spillPath, output);
 
   const lines = output.split("\n");
@@ -219,7 +219,7 @@ async function executeBashImpl(
         if (settled || !proc.pid) return;
         settled = true;
 
-        const spillPath = `/tmp/exocortex-bash-${proc.pid}-${Date.now()}.tmp`;
+        const spillPath = `/tmp/aitower-bash-${proc.pid}-${Date.now()}.tmp`;
         const partial = Buffer.concat(chunks).toString("utf8");
 
         // Open write stream and flush accumulated output to it

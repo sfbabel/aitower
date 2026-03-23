@@ -1,5 +1,5 @@
 /**
- * Unix domain socket server for exocortexd.
+ * Unix domain socket server for aitowerd.
  *
  * Accepts client connections, parses JSON-lines commands,
  * routes them to handlers, and sends events back.

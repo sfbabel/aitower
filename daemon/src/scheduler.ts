@@ -1,7 +1,7 @@
 /**
- * Cron scheduler for exocortexd.
+ * Cron scheduler for aitowerd.
  *
- * Scans ~/.config/exocortex/cron/ for executable .sh files, parses
+ * Scans ~/.config/aitower/cron/ for executable .sh files, parses
  * cron schedule headers, and runs them on schedule. Each script is
  * a standalone bash file that can use `exo` or any other tool.
  *
@@ -28,7 +28,7 @@ import {
   type FSWatcher,
 } from "fs";
 import { join, basename } from "path";
-import { configDir } from "@exocortex/shared/paths";
+import { configDir } from "@aitower/shared/paths";
 import { log } from "./log";
 
 // ── Cron directory ──────────────────────────────────────────────────

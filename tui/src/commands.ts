@@ -16,6 +16,8 @@ import { convDisplayName } from "./messages";
 import { copyToClipboard } from "./vim/clipboard";
 import { PENDING_TITLE } from "./titlegen";
 import { getMarkPrefix, getMarkFromTitle } from "./marks";
+import { sortConversations, bottomPinnedOrder, topUnpinnedOrder } from "./messages";
+import { syncSelectedIndex } from "./sidebar";
 import { theme, themes, THEME_NAMES, setTheme } from "./theme";
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -33,6 +35,7 @@ export type CommandResult =
   | { type: "effort_changed"; effort: EffortLevel }
   | { type: "rename_conversation"; title: string }
   | { type: "generate_title" }
+  | { type: "pin_conversation"; convId: string; pinned: boolean }
   | { type: "login" }
   | { type: "logout" }
   | { type: "theme_changed" };
@@ -93,13 +96,62 @@ const commands: SlashCommand[] = [
     },
   },
   {
+    name: "/keys",
+    description: "Show all keybindings",
+    handler: (_text, state) => {
+      const text = [
+        "── The flow ───────────────────────────",
+        "  i → type → Enter → response",
+        "  Esc → ready (scroll, browse)",
+        "  s → pick a conversation → Enter",
+        "",
+        "── Typing (● typing) ──────────────────",
+        "Enter            Send message",
+        "Shift+Enter      Insert newline",
+        "Tab              Autocomplete",
+        "Esc              Done typing → ready",
+        "",
+        "── Ready (● ready) ────────────────────",
+        "i                Start typing",
+        "j / k            Scroll chat",
+        "s                Open conversations",
+        "n                New conversation",
+        "q                Stop streaming",
+        "Q                Quit",
+        "",
+        "── Conversations (● sidebar) ──────────",
+        "j / k            Navigate list",
+        "Enter / click    Open → back to ready",
+        "Right click      Pin / delete / etc",
+        "s                Close sidebar",
+        "",
+        "── Mouse (works everywhere) ───────────",
+        "Click            Select / focus",
+        "Right click      Context menu",
+        "Scroll wheel     Scroll",
+        "≡                Conversations",
+        "+                New conversation",
+        "",
+        "── Editing (advanced) ─────────────────",
+        "w / b / e        Word motions",
+        "d / c / y        Operators + motion",
+        "v / V            Visual select",
+        "yy               Copy line",
+        "u                Undo",
+      ].join("\n");
+      state.messages.push({ role: "system", text, metadata: null });
+      clearPrompt(state);
+      return { type: "handled" };
+    },
+  },
+  {
     name: "/quit",
-    description: "Exit Exocortex",
+    description: "Exit aitower",
     handler: () => ({ type: "quit" }),
   },
   {
     name: "/exit",
-    description: "Exit Exocortex",
+    description: "Exit aitower",
     handler: () => ({ type: "quit" }),
   },
   {
@@ -140,6 +192,33 @@ const commands: SlashCommand[] = [
       if (conv) conv.title = title;
       clearPrompt(state);
       return { type: "rename_conversation", title };
+    },
+  },
+  {
+    name: "/pin",
+    description: "Pin or unpin the current conversation",
+    handler: (_text, state) => {
+      if (!state.convId) {
+        state.messages.push({ role: "system", text: "No active conversation to pin.", metadata: null });
+        clearPrompt(state);
+        return { type: "handled" };
+      }
+      const conv = state.sidebar.conversations.find(c => c.id === state.convId);
+      if (!conv) {
+        clearPrompt(state);
+        return { type: "handled" };
+      }
+      const newPinned = !conv.pinned;
+      conv.pinned = newPinned;
+      conv.sortOrder = newPinned
+        ? bottomPinnedOrder(state.sidebar.conversations, conv.id)
+        : topUnpinnedOrder(state.sidebar.conversations, conv.id);
+      sortConversations(state.sidebar.conversations);
+      syncSelectedIndex(state.sidebar);
+      const label = newPinned ? "Pinned" : "Unpinned";
+      state.messages.push({ role: "system", text: `${label} conversation.`, metadata: null });
+      clearPrompt(state);
+      return { type: "pin_conversation", convId: conv.id, pinned: newPinned };
     },
   },
   {

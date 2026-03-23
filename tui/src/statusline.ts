@@ -14,6 +14,7 @@ import { theme } from "./theme";
 
 // ── Block registry ──────────────────────────────────────────────────
 
+import { hintsBlock } from "./statusblocks/hints";
 import { usageBlock } from "./statusblocks/usage";
 import { contextBlock } from "./statusblocks/context";
 
@@ -29,6 +30,7 @@ type BlockBuilder = (state: RenderState) => StatusBlock | null;
 
 /** Ordered list of block builders. Position determines display order. */
 const BLOCK_BUILDERS: BlockBuilder[] = [
+  hintsBlock,
   usageBlock,
   contextBlock,
 ];

@@ -1,13 +1,13 @@
 /**
- * Credential storage for exocortexd.
+ * Credential storage for aitowerd.
  *
- * Reads/writes OAuth tokens to ~/.config/exocortex/credentials.json.
+ * Reads/writes OAuth tokens to ~/.config/aitower/credentials.json.
  */
 
 import { join } from "path";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync } from "fs";
 import { log } from "./log";
-import { configDir } from "@exocortex/shared/paths";
+import { configDir } from "@aitower/shared/paths";
 
 // ── Types ───────────────────────────────────────────────────────────
 

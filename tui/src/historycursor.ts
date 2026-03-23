@@ -62,8 +62,18 @@ export function applyHistoryAction(action: Action, state: RenderState): boolean 
   switch (action) {
     case "history_left":    state.historyCursor = charLeft(cur, lines); break;
     case "history_right":   state.historyCursor = charRight(cur, lines); break;
-    case "history_up":      state.historyCursor = lineUp(cur, lines); break;
-    case "history_down":    state.historyCursor = lineDown(cur, lines); break;
+    case "history_up": {
+      let c = cur;
+      for (let i = 0; i < 3; i++) c = lineUp(c, lines);
+      state.historyCursor = c;
+      break;
+    }
+    case "history_down": {
+      let c = cur;
+      for (let i = 0; i < 3; i++) c = lineDown(c, lines);
+      state.historyCursor = c;
+      break;
+    }
     case "history_w":       state.historyCursor = wordForward(cur, lines); break;
     case "history_b":       state.historyCursor = wordBackward(cur, lines); break;
     case "history_e":       state.historyCursor = wordEnd(cur, lines); break;

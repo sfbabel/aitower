@@ -25,6 +25,7 @@ export interface SidebarState {
   selectedIndex: number;
   scrollOffset: number;
   pendingDeleteId: string | null;
+  hoveredIndex: number | null;
 }
 
 export function createSidebarState(): SidebarState {
@@ -35,6 +36,7 @@ export function createSidebarState(): SidebarState {
     selectedIndex: 0,
     scrollOffset: 0,
     pendingDeleteId: null,
+    hoveredIndex: null,
   };
 }
 
@@ -263,6 +265,39 @@ export function syncSelectedIndex(sidebar: SidebarState): void {
   sidebar.selectedId = sidebar.conversations[sidebar.selectedIndex]?.id ?? null;
 }
 
+// ── Mouse hit testing ───────────────────────────────────────────────
+
+/**
+ * Map a screen row (1-based) to a conversation index, or null
+ * if the row is a header, label, delimiter, or out of range.
+ */
+export function sidebarHitTest(screenRow: number, sidebar: SidebarState): number | null {
+  const listRow = screenRow - 3; // rows 1-2 are header + separator
+  if (listRow < 0) return null;
+
+  const displayIdx = listRow + sidebar.scrollOffset;
+  const convs = sidebar.conversations;
+  const pinnedCount = convs.filter(c => c.pinned).length;
+
+  // Reconstruct display row mapping (mirrors renderSidebar logic)
+  let idx = 0;
+  if (pinnedCount > 0) {
+    if (displayIdx === idx) return null; // "Pinned" label
+    idx++;
+    for (let i = 0; i < pinnedCount; i++) {
+      if (displayIdx === idx) return i;
+      idx++;
+    }
+    if (displayIdx === idx) return null; // delimiter
+    idx++;
+  }
+  for (let i = pinnedCount; i < convs.length; i++) {
+    if (displayIdx === idx) return i;
+    idx++;
+  }
+  return null;
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────
 
 /** Pad or truncate a string to exactly `width` visible characters. */
@@ -376,6 +411,7 @@ export function renderSidebar(
     const ci = dr.convIdx!;
     const conv = convs[ci];
     const isSelected = ci === sidebar.selectedIndex;
+    const isHovered = ci === sidebar.hoveredIndex && !isSelected;
     const isCurrent = conv.id === currentConvId;
     const isPendingDelete = conv.id === sidebar.pendingDeleteId;
 
@@ -402,8 +438,8 @@ export function renderSidebar(
     if (mark) title = stripMark(title);
     if (title.length > maxTitle) title = title.slice(0, maxTitle - 1) + "…";
 
-    const bg = isSelected ? theme.sidebarSelBg : theme.sidebarBg;
-    const fg = isPendingDelete ? theme.error : (isSelected || isCurrent) ? theme.text : theme.muted;
+    const bg = isSelected ? theme.sidebarSelBg : isHovered ? theme.sidebarHoverBg : theme.sidebarBg;
+    const fg = isPendingDelete ? theme.error : (isSelected || isCurrent) ? theme.text : isHovered ? theme.text : theme.muted;
     const titleText = isCurrent && !isPendingDelete ? theme.bold + title + theme.boldOff : title;
     const streamIconColored = streamIcon ? streamIconColor + streamIcon + fg : "";
     const starIconColored = starIcon ? theme.warning + starIcon + fg : "";

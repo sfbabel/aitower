@@ -1,12 +1,12 @@
 {
-  "name": "@exocortex/cli",
+  "name": "@aitower/cli",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "start": "bun run src/main.ts"
   },
   "dependencies": {
-    "@exocortex/shared": "workspace:*"
+    "@aitower/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

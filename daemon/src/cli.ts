@@ -1,5 +1,5 @@
 /**
- * CLI subcommands for exocortexd.
+ * CLI subcommands for aitowerd.
  *
  * Standalone commands run outside the daemon process.
  * Each function is a complete subcommand — runs and exits.
@@ -11,7 +11,7 @@ import { login, refreshTokens, verifyAuth } from "./auth";
 // ── Login ──────────────────────────────────────────────────────────
 
 export async function handleLogin(): Promise<void> {
-  console.log("\n  Exocortex — Authentication\n");
+  console.log("\n  aitower — Authentication\n");
 
   // Check existing credentials
   const existing = loadAuth();

@@ -1,7 +1,7 @@
 /**
  * Conversation persistence — versioned JSON files.
  *
- * Reads/writes conversation files to ~/.config/exocortex/conversations/.
+ * Reads/writes conversation files to ~/.config/aitower/conversations/.
  * Trash (soft-delete) lives in a sibling trash/ directory with a
  * stack-ordered trash.json for undo support.
  * Schema is versioned — migrations run on load to upgrade old formats.
@@ -12,7 +12,7 @@
 import { join } from "path";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync, renameSync } from "fs";
 import { log } from "./log";
-import { conversationsDir, trashDir } from "@exocortex/shared/paths";
+import { conversationsDir, trashDir } from "@aitower/shared/paths";
 import type { Conversation, StoredMessage, ApiMessage, ModelId, EffortLevel, ConversationSummary } from "./messages";
 import { DEFAULT_EFFORT, sortConversations } from "./messages";
 

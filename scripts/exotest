@@ -7,14 +7,14 @@
 # <worktree> can be:
 #   - A bare name:       exotest fix-prompt-scroll
 #   - A relative path:   exotest .worktrees/fix-prompt-scroll
-#   - An absolute path:  exotest /home/.../Exocortex/.worktrees/fix-prompt-scroll
+#   - An absolute path:  exotest /home/.../Aitower/.worktrees/fix-prompt-scroll
 #
 # Starts the worktree's daemon (if not already running), launches the TUI,
 # and kills the daemon when the TUI exits.
 
 set -euo pipefail
 
-EXOCORTEX_ROOT="$HOME/Workspace/Exocortex"
+EXOCORTEX_ROOT="$HOME/Workspace/Aitower"
 DAEMON_PID=""
 
 die() { printf "\n  ✗ %s\n\n" "$1" >&2; exit 1; }
@@ -59,11 +59,11 @@ echo ""
 
 # ── Daemon ──────────────────────────────────────────────────────────
 
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/exocortex"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/aitower"
 RUNTIME_DIR="$CONFIG_DIR/runtime/$WT_NAME"
-PID_FILE="$RUNTIME_DIR/exocortexd.pid"
-SOCKET="$RUNTIME_DIR/exocortexd.sock"
-LOG="$RUNTIME_DIR/exocortexd.log"
+PID_FILE="$RUNTIME_DIR/aitowerd.pid"
+SOCKET="$RUNTIME_DIR/aitowerd.sock"
+LOG="$RUNTIME_DIR/aitowerd.log"
 
 # Check if a daemon is already alive for this worktree
 DAEMON_ALIVE=false

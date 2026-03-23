@@ -1,5 +1,5 @@
 /**
- * @exocortex/shared — Message and block domain model.
+ * @aitower/shared — Message and block domain model.
  *
  * The single source of truth for the core data structures shared
  * between the daemon and all clients. Blocks are the atoms of an
