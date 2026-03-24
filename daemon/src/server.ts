@@ -7,6 +7,7 @@
 
 import { createServer, type Server, type Socket } from "net";
 import { existsSync, unlinkSync } from "fs";
+import { isWindows } from "@exocortex/shared/paths";
 import { log } from "./log";
 import type { Command, Event } from "./protocol";
 
@@ -38,7 +39,8 @@ export class DaemonServer {
 
   async start(): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (existsSync(this.socketPath)) {
+      // Named pipes on Windows don't leave stale files — no cleanup needed
+      if (!isWindows && existsSync(this.socketPath)) {
         try { unlinkSync(this.socketPath); } catch (err) {
           reject(new Error(`Cannot remove stale socket: ${err}`));
           return;
@@ -64,7 +66,8 @@ export class DaemonServer {
       await new Promise<void>((r) => this.server!.close(() => r()));
       this.server = null;
     }
-    if (existsSync(this.socketPath)) {
+    // Named pipes on Windows don't leave stale files — no cleanup needed
+    if (!isWindows && existsSync(this.socketPath)) {
       try { unlinkSync(this.socketPath); } catch { /* already gone */ }
     }
     log("info", "server: stopped");

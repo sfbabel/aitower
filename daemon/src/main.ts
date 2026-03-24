@@ -24,7 +24,7 @@ import { startScheduler, stopScheduler, getCronDir, getJobs } from "./scheduler"
 import { startWatchdog, stopWatchdog } from "./watchdog";
 import { initExternalTools, stopExternalToolsAsync, getExternalToolCount, getSupervisedDaemonCount, getExternalToolStyles } from "./external-tools";
 import { getToolDisplayInfo } from "./tools/registry";
-import { socketPath, pidPath, runtimeDir, worktreeName } from "@exocortex/shared/paths";
+import { socketPath, pidPath, runtimeDir, worktreeName, isWindows } from "@exocortex/shared/paths";
 
 // ── Paths ───────────────────────────────────────────────────────────
 
@@ -36,7 +36,8 @@ const PID_PATH = pidPath();
 // ── Singleton guard ─────────────────────────────────────────────────
 
 function probeSocket(): Promise<boolean> {
-  if (!existsSync(SOCKET_PATH)) return Promise.resolve(false);
+  // Named pipes on Windows don't exist as files — skip the filesystem check
+  if (!isWindows && !existsSync(SOCKET_PATH)) return Promise.resolve(false);
   return new Promise((resolve) => {
     const client = netConnect(SOCKET_PATH);
     const timer = setTimeout(() => { client.destroy(); resolve(false); }, 1000);
@@ -56,7 +57,8 @@ async function isAlreadyRunning(): Promise<boolean> {
     try { unlinkSync(PID_PATH); } catch { /* already gone */ }
   }
   if (await probeSocket()) return true;
-  if (existsSync(SOCKET_PATH)) {
+  // Named pipes on Windows don't leave stale files — no cleanup needed
+  if (!isWindows && existsSync(SOCKET_PATH)) {
     try { unlinkSync(SOCKET_PATH); } catch { /* already gone */ }
   }
   return false;

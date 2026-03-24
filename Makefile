@@ -59,31 +59,7 @@ remove-links:
 # ── Systemd service ─────────────────────────────────────────────────
 
 service:
-	@mkdir -p $(UNIT_DIR)
-	@BUN_PATH=$$(command -v bun) && \
-	printf '%s\n' \
-		'[Unit]' \
-		'Description=Exocortex daemon (exocortexd)' \
-		'' \
-		'[Service]' \
-		'Type=simple' \
-		'WorkingDirectory=$(REPO_DIR)/daemon' \
-		"ExecStart=$$BUN_PATH run src/main.ts" \
-		'Restart=on-failure' \
-		'RestartSec=2' \
-		'' \
-		'[Install]' \
-		'WantedBy=default.target' \
-	> $(UNIT_DIR)/$(UNIT_NAME)
-	@systemctl --user daemon-reload
-	@systemctl --user enable $(UNIT_NAME)
-	@printf '  ✓ Installed and enabled $(UNIT_NAME)\n'
-	@if ! systemctl --user is-active --quiet $(UNIT_NAME); then \
-		systemctl --user start $(UNIT_NAME); \
-		printf '  ✓ Started $(UNIT_NAME)\n'; \
-	else \
-		printf '  • $(UNIT_NAME) is already running (restart with: systemctl --user restart $(UNIT_NAME))\n'; \
-	fi
+	@bash $(REPO_DIR)/scripts/install-daemon.sh
 
 remove-service:
 	@if systemctl --user is-active --quiet $(UNIT_NAME) 2>/dev/null; then \

@@ -19,6 +19,7 @@ Description=Exocortex daemon (exocortexd)
 [Service]
 Type=simple
 WorkingDirectory=$REPO_DIR/daemon
+Environment=PATH=$HOME/.local/bin:$HOME/.local/bun/bin:$HOME/.local/rust/cargo/bin:/usr/local/bin:/usr/bin
 ExecStart=$BUN_PATH run src/main.ts
 Restart=on-failure
 RestartSec=2
@@ -31,10 +32,12 @@ EOF
 echo "  Wrote $UNIT_FILE"
 
 systemctl --user daemon-reload
-echo "  Reloaded systemd user units"
+systemctl --user enable exocortex-daemon
+echo "  ✓ Installed and enabled exocortex-daemon.service"
 
-systemctl --user enable --now exocortex-daemon
-echo "  Enabled and started exocortex-daemon"
-echo ""
-
-systemctl --user status exocortex-daemon --no-pager
+if ! systemctl --user is-active --quiet exocortex-daemon; then
+  systemctl --user start exocortex-daemon
+  echo "  ✓ Started exocortex-daemon.service"
+else
+  echo "  • exocortex-daemon.service is already running (restart with: systemctl --user restart exocortex-daemon)"
+fi

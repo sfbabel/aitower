@@ -70,6 +70,11 @@ function detectWorktree(): string | null {
   return _worktreeName;
 }
 
+// ── Platform ───────────────────────────────────────────────────────
+
+/** True when running on Windows. */
+export const isWindows: boolean = process.platform === "win32";
+
 // ── Public API ──────────────────────────────────────────────────────
 
 /** Repository root, resolved from this source file's location. */
@@ -118,8 +123,12 @@ export function runtimeDir(): string {
     : join(CONFIG_DIR, "runtime");
 }
 
-/** Full path to the daemon socket. */
+/** Full path to the daemon socket (or named pipe on Windows). */
 export function socketPath(): string {
+  if (isWindows) {
+    const wt = detectWorktree();
+    return wt ? `\\\\.\\pipe\\exocortexd-${wt}` : `\\\\.\\pipe\\exocortexd`;
+  }
   return join(runtimeDir(), "exocortexd.sock");
 }
 

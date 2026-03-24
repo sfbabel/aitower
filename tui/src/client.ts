@@ -9,7 +9,7 @@ import { existsSync } from "fs";
 import type { Command, Event, QueueTiming } from "./protocol";
 import type { ModelId, EffortLevel, ImageAttachment } from "./messages";
 import { DEFAULT_EFFORT } from "./messages";
-import { socketPath } from "@exocortex/shared/paths";
+import { socketPath, isWindows } from "@exocortex/shared/paths";
 
 export type EventHandler = (event: Event) => void;
 export type LlmCompleteCallback = (text: string) => void;
@@ -34,7 +34,8 @@ export class DaemonClient {
 
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (!existsSync(this.socketPath)) {
+      // Named pipes on Windows don't exist as files — skip the filesystem check
+      if (!isWindows && !existsSync(this.socketPath)) {
         reject(new Error(
           "exocortexd socket not found. Is the daemon running?\n" +
           "Start it with: cd daemon && bun run start"
