@@ -87,9 +87,11 @@ async function startDaemon(): Promise<void> {
   const shutdown = async () => {
     log("info", "exocortexd: shutting down");
     stopWatchdog();
-    stopScheduler();
+    if (!isWindows) {
+      stopScheduler();
+      await stopExternalToolsAsync();
+    }
     convStore.flushAll();
-    await stopExternalToolsAsync();
     await server.stop();
     try { unlinkSync(PID_PATH); } catch { /* best-effort cleanup */ }
     process.exit(0);
@@ -107,18 +109,22 @@ async function startDaemon(): Promise<void> {
   convStore.loadFromDisk();
 
   // Initialize external tools (scan + watch for changes)
-  initExternalTools(() => {
-    // Broadcast updated tool styles to all connected clients
-    const externalStyles = getExternalToolStyles();
-    server.broadcast({
-      type: "tools_available",
-      tools: getToolDisplayInfo(),
-      ...(externalStyles.length > 0 ? { externalToolStyles: externalStyles } : {}),
+  if (!isWindows) {
+    initExternalTools(() => {
+      // Broadcast updated tool styles to all connected clients
+      const externalStyles = getExternalToolStyles();
+      server.broadcast({
+        type: "tools_available",
+        tools: getToolDisplayInfo(),
+        ...(externalStyles.length > 0 ? { externalToolStyles: externalStyles } : {}),
+      });
     });
-  });
+  }
 
   // Start cron scheduler + stale stream watchdog
-  startScheduler();
+  if (!isWindows) {
+    startScheduler();
+  }
   startWatchdog();
 
   // Check auth status
@@ -126,14 +132,14 @@ async function startDaemon(): Promise<void> {
   const authOk = auth?.tokens?.accessToken && !isTokenExpired(auth.tokens);
 
   const wt = worktreeName();
-  const cronJobs = getJobs();
-  const extToolCount = getExternalToolCount();
+  const cronJobs = isWindows ? [] : getJobs();
+  const extToolCount = isWindows ? 0 : getExternalToolCount();
+  const supervisedCount = isWindows ? 0 : getSupervisedDaemonCount();
   console.log(`\n  exocortexd running (pid ${process.pid})${wt ? ` [worktree: ${wt}]` : ""}`);
   console.log(`  socket: ${SOCKET_PATH}`);
   console.log(`  auth:   ${authOk ? `✓ ${auth?.profile?.email ?? "authenticated"}` : "✗ not authenticated — run: bun run login"}`);
   console.log(`  cron:   ${cronJobs.length} job(s) in ${getCronDir()}`);
-  const daemonCount = getSupervisedDaemonCount();
-  console.log(`  tools:  ${extToolCount} external tool(s)${daemonCount > 0 ? `, ${daemonCount} supervised daemon(s)` : ""}`);
+  console.log(`  tools:  ${extToolCount} external tool(s)${supervisedCount > 0 ? `, ${supervisedCount} supervised daemon(s)` : ""}`);
   console.log(`\n  Waiting for connections...\n`);
 
   log("info", `exocortexd: ready on ${SOCKET_PATH} (auth=${!!authOk}, cron=${cronJobs.length})`);

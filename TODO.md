@@ -50,7 +50,7 @@ This could be a small Go/C program or a compiled Bun script. The launcher
 is what the user double-clicks — it opens a console window with the TUI
 ready to go. Alternatively, a `.bat` wrapper works for v1.
 
-### 8. Skip non-essential Linux features for v1
+### ~~8. Skip non-essential Linux features for v1~~ ✅
 These can be left as no-ops or skipped entirely on Windows:
 - **Cron scheduler** — scripts are `.sh`, needs bash. Disable on Windows.
 - **External tools** (discord-cli, gmail-cli, etc.) — Linux-specific. Disable on Windows.

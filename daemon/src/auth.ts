@@ -10,6 +10,7 @@ import { randomBytes, createHash } from "crypto";
 import { log } from "./log";
 import { ANTHROPIC_BASE_URL } from "./constants";
 import { loadAuth, saveAuth, isTokenExpired, type StoredTokens, type OAuthProfile } from "./store";
+import { isWindows } from "@exocortex/shared/paths";
 
 // ── Constants (matching Claude Code) ────────────────────────────────
 
@@ -297,7 +298,8 @@ export async function login(callbacks?: LoginCallbacks | ((msg: string) => void)
   const cbs: LoginCallbacks = typeof callbacks === "function" ? { onProgress: callbacks } : callbacks ?? {};
   const say = cbs.onProgress ?? console.log;
   const openUrl = cbs.onOpenUrl ?? ((url: string) => {
-    Bun.spawn(["xdg-open", url], { stdout: "ignore", stderr: "ignore" }).unref();
+    const openCmd = isWindows ? ["cmd", "/c", "start", "", url] : ["xdg-open", url];
+    Bun.spawn(openCmd, { stdout: "ignore", stderr: "ignore" }).unref();
   });
 
   const codeVerifier = generateCodeVerifier();
