@@ -412,7 +412,7 @@ export function initExternalTools(onUpdate?: () => void): void {
 
   // Watch for changes
   try {
-    _watcher = watch(_externalToolsDir, { persistent: false }, (_eventType, _filename) => {
+    _watcher = watch(_externalToolsDir, { persistent: false, recursive: true }, (_eventType, _filename) => {
       if (_debounceTimer) clearTimeout(_debounceTimer);
       _debounceTimer = setTimeout(() => {
         _debounceTimer = null;
