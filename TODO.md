@@ -26,7 +26,7 @@ Also fix process group handling: Windows doesn't have `kill(-pgid)`, use
 Replace with `os.tmpdir()` which returns `C:\Users\...\AppData\Local\Temp`
 on Windows.
 
-### 5. Handle signals gracefully
+### ~~5. Handle signals gracefully~~ ✅
 Windows only sends SIGINT (Ctrl+C). SIGTERM doesn't exist. Add
 `process.on("exit", cleanup)` as a fallback alongside the existing
 SIGINT/SIGTERM handlers in `daemon/src/main.ts`.

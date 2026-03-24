@@ -96,6 +96,10 @@ async function startDaemon(): Promise<void> {
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
+  // Windows doesn't deliver SIGTERM — ensure cleanup runs on exit regardless
+  process.on("exit", () => {
+    try { unlinkSync(PID_PATH); } catch { /* best-effort */ }
+  });
 
   await server.start();
 
