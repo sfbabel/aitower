@@ -11,7 +11,7 @@ No Bun, no WSL, no setup — just download and run.
 Gate on `os.platform()`. Named pipes work with Node/Bun's `net` module
 transparently — no code changes needed in `server.ts` or `client.ts`.
 
-### 2. Platform-abstract the bash tool
+### ~~2. Platform-abstract the bash tool~~ ✅
 `daemon/src/tools/bash.ts` — on Windows, spawn `powershell -Command` (or
 `cmd.exe /c`) instead of `bash -c`. The AI adapts to the OS automatically.
 Also fix process group handling: Windows doesn't have `kill(-pgid)`, use

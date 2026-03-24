@@ -13,9 +13,12 @@
 
 import { spawn } from "child_process";
 import { writeFileSync, createWriteStream, type WriteStream } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import type { Tool, ToolResult, ToolSummary } from "./types";
 import { MAX_OUTPUT_CHARS, getString, getNumber, safeSlice } from "./util";
 import { TOOL_BACKGROUND_SECONDS } from "../constants";
+import { isWindows } from "@exocortex/shared/paths";
 
 // ── Constants ──────────────────────────────────────────────────────
 
@@ -37,7 +40,7 @@ function truncLine(line: string, budget: number): string {
  * text to a temp file and return a head+tail preview with the file path.
  */
 function spillAndPreview(output: string, byteTruncated: boolean): string {
-  const spillPath = `/tmp/exocortex-bash-${Date.now()}.txt`;
+  const spillPath = join(tmpdir(), `exocortex-bash-${Date.now()}.txt`);
   writeFileSync(spillPath, output);
 
   const lines = output.split("\n");
@@ -85,12 +88,19 @@ const KILL_GRACE_MS = 200;
  * Kill an entire process group: SIGTERM first, then SIGKILL after a
  * short grace period. The negative PID targets every process in the
  * group — bash, its children, their children, etc.
+ *
+ * On Windows, uses `taskkill /T /F` to kill the process tree (negative
+ * PIDs are meaningless on Windows).
  */
 function killProcessGroup(pid: number): void {
-  try { process.kill(-pid, "SIGTERM"); } catch { /* process already exited */ }
-  setTimeout(() => {
-    try { process.kill(-pid, "SIGKILL"); } catch { /* process already exited */ }
-  }, KILL_GRACE_MS);
+  if (isWindows) {
+    try { spawn("taskkill", ["/T", "/F", "/PID", String(pid)], { stdio: "ignore" }); } catch { /* process already exited */ }
+  } else {
+    try { process.kill(-pid, "SIGTERM"); } catch { /* process already exited */ }
+    setTimeout(() => {
+      try { process.kill(-pid, "SIGKILL"); } catch { /* process already exited */ }
+    }, KILL_GRACE_MS);
+  }
 }
 
 // ── Execution ──────────────────────────────────────────────────────
@@ -150,13 +160,18 @@ async function executeBashImpl(
   const startTime = Date.now();
 
   return new Promise((resolve) => {
-    const proc = spawn("bash", ["-c", command], {
-      cwd: process.cwd(),
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout,
-      detached: true,   // own process group so we can kill the entire tree
-    });
+    const proc = spawn(
+      isWindows ? "powershell" : "bash",
+      isWindows ? ["-NoProfile", "-Command", command] : ["-c", command],
+      {
+        cwd: process.cwd(),
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout,
+        detached: true,   // own process group so we can kill the entire tree
+        windowsHide: isWindows,
+      },
+    );
 
     const chunks: Buffer[] = [];
     let totalBytes = 0;
@@ -219,7 +234,7 @@ async function executeBashImpl(
         if (settled || !proc.pid) return;
         settled = true;
 
-        const spillPath = `/tmp/exocortex-bash-${proc.pid}-${Date.now()}.tmp`;
+        const spillPath = join(tmpdir(), `exocortex-bash-${proc.pid}-${Date.now()}.tmp`);
         const partial = Buffer.concat(chunks).toString("utf8");
 
         // Open write stream and flush accumulated output to it
@@ -230,13 +245,19 @@ async function executeBashImpl(
         const bgSec = Math.round(backgroundAfterMs / 1000);
         const preview = partial.trimEnd();
         let output = preview ? `${preview}\n\n` : "";
+        const checkCmd = isWindows
+          ? `bash "if (Get-Process -Id ${proc.pid} -ErrorAction SilentlyContinue) { 'running' } else { 'exited' }"`
+          : `bash "kill -0 ${proc.pid} 2>/dev/null && echo running || echo exited"`;
+        const stopCmd = isWindows
+          ? `bash "taskkill /T /F /PID ${proc.pid}"`
+          : `bash "kill ${proc.pid}"`;
         output += [
           `⏳ Command backgrounded — still running after ${bgSec}s (PID ${proc.pid}).`,
           `Output is being written to: ${spillPath}`,
           `• View output so far → read tool on that file`,
-          `• Check if still running → bash "kill -0 ${proc.pid} 2>/dev/null && echo running || echo exited"`,
-          `• Wait for it to finish → bash with command "tail -f ${spillPath}" and await=N (where N is how long you're willing to wait in seconds, prevents hangs)`,
-          `• Stop it → bash "kill ${proc.pid}"`,
+          `• Check if still running → ${checkCmd}`,
+          `• Wait for it to finish → ${isWindows ? `bash with command "Get-Content -Path '${spillPath}' -Wait -Tail 50" and await=N` : `bash with command "tail -f ${spillPath}" and await=N`} (where N is how long you're willing to wait in seconds, prevents hangs)`,
+          `• Stop it → ${stopCmd}`,
         ].join("\n");
 
         resolve({ output, isError: false });
@@ -295,19 +316,21 @@ function summarize(input: Record<string, unknown>): ToolSummary {
 
 // ── Tool definition ────────────────────────────────────────────────
 
+const shellName = isWindows ? "PowerShell" : "bash";
+
 export const bash: Tool = {
   name: "bash",
-  description: "Execute a bash command. Returns stdout and stderr.",
+  description: `Execute a ${shellName} command. Returns stdout and stderr.`,
   inputSchema: {
     type: "object",
     properties: {
-      command: { type: "string", description: "The bash command to execute" },
+      command: { type: "string", description: `The ${shellName} command to execute` },
       timeout: { type: "number", description: "Timeout in milliseconds (default 3600000)" },
       await: { type: "number", description: "Seconds to wait before backgrounding this command. Use when you expect a command to take longer than the default threshold (e.g. builds, installs, watching a backgrounded process)." },
     },
     required: ["command"],
   },
-  systemHint: `Bash commands that run longer than ${TOOL_BACKGROUND_SECONDS}s are automatically backgrounded: the process keeps running but control returns to you with the PID and a temp file where output accumulates. Pass the "await" parameter (seconds) to suppress backgrounding when you expect a command to take longer (builds, installs, sleeps, tailing a backgrounded process).`,
+  systemHint: `${shellName} commands that run longer than ${TOOL_BACKGROUND_SECONDS}s are automatically backgrounded: the process keeps running but control returns to you with the PID and a temp file where output accumulates. Pass the "await" parameter (seconds) to suppress backgrounding when you expect a command to take longer (builds, installs, sleeps, tailing a backgrounded process).`,
   display: {
     label: "$",
     color: "#d19a66",  // muted amber
